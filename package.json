@@ -1,0 +1,35 @@
+{
+  "name": "magpie-doubao-work",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "Magpie 豆包 / 豆包工作 / Doubao Work provider plugin with browser login, JSON import, OpenAI text streaming, quotas and daily check-in.",
+  "author": "3294798852",
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "./magpie/index.mjs",
+  "exports": {".": "./magpie/index.mjs"},
+  "files": ["magpie/", "native/", "assets/", "browser-login.mjs", "platform.mjs", "private-files.mjs", "README.en.md", "THIRD_PARTY_NOTICES.md", "docs/"],
+  "keywords": [
+    "magpie-plugin", "magpie", "doubao", "doubao-work", "doubaowork", "doubao-plugin",
+    "doubao-work-plugin", "provider-plugin", "opencode-plugin", "openai-compatible",
+    "browser-login", "multi-account", "streaming", "sse", "daily-checkin",
+    "windows", "linux", "macos", "豆包", "豆包工作", "豆包插件", "供应商插件", "浏览器登录", "自动签到"
+  ],
+  "magpie": {
+    "name": "Magpie 豆包工作插件 / Doubao Work Plugin",
+    "icon": "https://raw.githubusercontent.com/3294798852/magpie-doubao-work/main/assets/doubao-work-avatar.png",
+    "summary": {
+      "en": "Magpie provider plugin / 供应商插件. Doubao Work 豆包插件 doubaowork. Browser login 浏览器登录, JSON import 导入, OpenAI text chat / SSE streaming 文本流式, quotas 额度, daily check-in 自动签到. Windows Linux macOS.",
+      "zh": "豆包插件 doubaowork，Magpie provider plugin / 供应商插件。浏览器登录 browser login、JSON import 导入、OpenAI text chat / SSE streaming 文本流式、quotas 额度、daily check-in 自动签到。Windows Linux macOS。"
+    }
+  },
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:magpie-host": "node scripts/magpie-smoke.mjs"
+  },
+  "repository": {"type": "git", "url": "https://github.com/3294798852/magpie-doubao-work.git"},
+  "bugs": {"url": "https://github.com/3294798852/magpie-doubao-work/issues"},
+  "homepage": "https://github.com/3294798852/magpie-doubao-work#readme"
+}

@@ -1,0 +1,12 @@
+node_modules/
+.local/
+dist/
+.env
+.env.*
+*.log
+*.tgz
+*.zip
+*.key
+*.db
+*.sqlite*
+doubao-accounts-*.json

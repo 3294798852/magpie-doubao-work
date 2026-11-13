@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-13",
+  "version": "0.5.0",
+  "source": "3294798852/doubao-work-gateway@v0.5.0",
+  "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
+  "local": {"os": "Windows 11", "node": "24.18.0", "syntax": "passed", "testsPassed": 32, "testsFailed": 0},
+  "hostSmoke": {"bun": "1.4.4", "result": "passed", "upstream": "synthetic fixtures"},
+  "search": {
+    "languages": ["zh", "en"],
+    "queriesPerLanguage": 31,
+    "matchedChecks": 62,
+    "nameBytes": 46,
+    "enSummaryBytes": 241,
+    "zhSummaryBytes": 238,
+    "matcher": "Magpie plugins.js current-language summary and substring matching"
+  }
+}

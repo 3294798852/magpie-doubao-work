@@ -1,0 +1,221 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {access} from 'node:fs/promises';
+import {setTimeout as delay} from 'node:timers/promises';
+import {createDoubaoPlugin} from '../magpie/provider.mjs';
+import DoubaoWorkPlugin from '../magpie/index.mjs';
+
+const messages = [{role:'user',content:'你好'}];
+const backup = (cookie = 'alpha', version = 3) => JSON.stringify(version === 3 ? {
+  schema:'doubao-work-accounts/v1',version:3,
+  accounts:[{id:'file-id',provider:'doubaowork',name:'文件中的名字',session:{cookieHeader:'sessionid='+cookie}}],
+} : {version:2,accounts:[{id:'file-id',provider:'doubaowork',desktop:false,name:'旧账号',pluginIdentity:'fixture:'+cookie,
+  pluginSecret:{cookieHeader:'sessionid='+cookie}}]});
+
+function runtime(overrides = {},options = {}) {
+  const auths = new Map(), scope = new AsyncLocalStorage();
+  const doubao = {
+    identity:async session => ({identity:session.cookieHeader.split('=')[1]+':0',name:'官方名字'}),
+    models:async () => ['fixture-model'],
+    quota:async () => ({plan:'测试计划',windows:[{label:'5 小时',view:'已用 25%',used:25}]}),
+    async *chat() { yield {content:'你好'}; },
+    ...overrides,
+  };
+  const input = {client:{auth:{async set({path,body}) {
+    assert.equal(path.id,'doubaowork');
+    assert(scope.getStore(),'auth.set must run in an account scope');
+    auths.set(scope.getStore(),structuredClone(body));
+  }}}};
+  let plugin = createDoubaoPlugin(input,{doubao,...options});
+  const run = (key,operation) => scope.run(key,() => operation(async () => structuredClone(auths.get(key))));
+  return {
+    get plugin() { return plugin; }, auths,run,
+    restart() { plugin = createDoubaoPlugin(input,{doubao,...options}); },
+    async login(key = 'A',cookie = 'alpha',version = 3) {
+      const [result] = await plugin.auth.import([backup(cookie,version)]);
+      assert.equal(result.type,'success');
+      auths.set(key,{...result,type:'oauth'});
+      return result;
+    },
+    async ask(key = 'A',body = {},init = {}) {
+      return run(key,async getAuth => {
+        const loader = await plugin.auth.loader(getAuth);
+        return loader.fetch('https://www.doubao.com/v1/chat/completions',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({model:'fixture-model',messages,...body}),...init,
+        });
+      });
+    },
+  };
+}
+
+test('Magpie 包入口、供应商配置与真实模型能力',async () => {
+  const plugin = await DoubaoWorkPlugin({client:{}});
+  const config = {};
+  plugin.config(config);
+  assert.equal(plugin.auth.provider,'doubaowork');
+  assert.equal(plugin.auth.maxConcurrency,1);
+  assert.equal(config.provider.doubaowork.npm,'@ai-sdk/openai-compatible');
+  assert.deepEqual(config.provider.doubaowork.models,{});
+  assert.deepEqual(await plugin.provider.models({},{}),{});
+  const r = runtime(); await r.login();
+  const models = await r.plugin.provider.models({},{auth:r.auths.get('A')});
+  assert.deepEqual(Object.keys(models),['fixture-model']);
+  assert.equal(models['fixture-model'].capabilities.toolcall,false);
+  assert.equal(models['fixture-model'].capabilities.input.image,false);
+  assert.equal(models['fixture-model'].api.id,'fixture-model');
+});
+
+test('v2/v3 账号导入向上游核验身份，错类文件与失效会话分别失败',async () => {
+  const r = runtime({identity:async session => {
+    if (session.cookieHeader.endsWith('bad')) throw Error('PRIVATE_FIXTURE');
+    return {identity:'verified:0',name:'官方名字'};
+  }});
+  for (const version of [2,3]) {
+    const result = await r.login('A','alpha',version);
+    assert.equal(result.accountId,'verified:0');
+    assert.equal(result.name,'官方名字');
+    assert.equal(JSON.parse(result.refresh).session.cookieHeader,'sessionid=alpha');
+  }
+  const results = await r.plugin.auth.import(['{}',backup('bad'),backup('good')]);
+  assert.deepEqual(results.map(result => result.type),['failed','failed','success']);
+  assert(!JSON.stringify(results.slice(0,2)).includes('PRIVATE_FIXTURE'));
+  const nodes = await r.plugin.auth.import([JSON.stringify({schema:'doubao-work-nodes/v1',nodes:[]})]);
+  assert.equal(nodes[0].type,'failed');
+});
+
+test('非流式文本与推理共用响应编码器，保留角色和文本分块',async () => {
+  let received;
+  const r = runtime({async *chat(session,body) {
+    received = {session,body};
+    yield {reasoning_content:'思考'}; yield {content:'你好'}; yield {content:'，世界'};
+  }});
+  await r.login();
+  const response = await r.ask('A',{messages:[{role:'system',content:'简洁回答'},
+    {role:'user',content:[{type:'text',text:'问候'}]}]});
+  assert.equal(response.status,200);
+  const value = await response.json();
+  assert.equal(value.choices[0].message.content,'你好，世界');
+  assert.equal(value.choices[0].message.reasoning_content,'思考');
+  assert.deepEqual(received.body.messages,[{role:'system',content:'简洁回答'},{role:'user',content:'问候'}]);
+  assert.equal(received.session.cookieHeader,'sessionid=alpha');
+  assert(!JSON.stringify(value).includes('sessionid'));
+  assert.equal((await r.ask('A',{tools:[]})).status,400);
+  assert.equal((await r.ask('A',{messages:[{role:'user',content:[{type:'image_url',image_url:{url:'https://example.test'}}]}]})).status,400);
+});
+
+test('流式文本、推理与正式结束标记；断流输出错误事件',async () => {
+  let broken = false;
+  const r = runtime({async *chat() {
+    yield {reasoning_content:'推理'}; yield {content:'回答'};
+    if (broken) throw Error('PRIVATE_RAW');
+  }});
+  await r.login();
+  const good = await (await r.ask('A',{stream:true})).text();
+  assert.match(good,/reasoning_content/); assert.match(good,/回答/); assert.match(good,/\[DONE\]/);
+  broken = true;
+  const bad = await r.run('A',async () => (await r.ask('A',{stream:true})).text());
+  assert.match(bad,/event: error/); assert(!bad.includes('[DONE]')); assert(!bad.includes('PRIVATE_RAW'));
+});
+
+test('验证错误持久暂停实际账号，宿主重启与额度查询均保留暂停',async () => {
+  const calls = [];
+  const r = runtime({async *chat(session) { calls.push(session.cookieHeader); throw {upstream_code:710022004}; }});
+  await r.login('A','alpha'); await r.login('B','bravo');
+  const response = await r.ask('A');
+  assert.equal(response.status,429);
+  assert.equal(response.headers.get('x-should-retry'),'false');
+  assert.equal((await response.json()).error.code,710022004);
+  assert.equal(r.auths.get('A').doubao.state,'needs_verification');
+  assert.equal(r.auths.get('B').doubao.state,'ready');
+  r.restart();
+  const usage = await r.run('A',getAuth => r.plugin.auth.usage(getAuth));
+  assert.equal(usage.windows[0].used,25);
+  assert.equal(r.auths.get('A').doubao.state,'needs_verification');
+  assert.equal((await r.ask('A')).status,429);
+  assert.deepEqual(calls,['sessionid=alpha']);
+});
+
+test('流中验证错误不输出成功结尾，登录失效告知 Magpie',async () => {
+  const r = runtime({async *chat() { yield {content:'partial'}; throw {upstream_code:710022004}; }});
+  await r.login();
+  const text = await r.run('A',async () => (await r.ask('A',{stream:true})).text());
+  assert.match(text,/710022004/); assert(!text.includes('[DONE]'));
+  assert.equal(r.auths.get('A').doubao.state,'needs_verification');
+  const expired = runtime({async *chat() { throw {status:401}; }}); await expired.login();
+  const response = await expired.ask();
+  assert.equal(response.status,401); assert.equal(response.headers.get('x-magpie-sign-in'),'expired');
+  assert.equal(expired.auths.get('A').doubao.state,'needs_login');
+});
+
+test('流式取消释放账号且按需拉取，调用者中止传递给豆包',async () => {
+  let produced = 0,closed = 0;
+  const r = runtime({async *chat(_session,_body,{signal}) {
+    try { produced++; yield {content:'first'}; await delay(10000,undefined,{signal}); yield {content:'late'}; }
+    finally { closed++; }
+  }});
+  await r.login();
+  const response = await r.ask('A',{stream:true});
+  await delay(10); assert.equal(produced,1);
+  await response.body.cancel(); assert.equal(closed,1);
+  const abort = new AbortController();
+  const next = await r.ask('A',{stream:true},{signal:abort.signal});
+  const reader = next.body.getReader();
+  await reader.read(); await reader.read();
+  const pending = reader.read(); abort.abort();
+  await assert.rejects(pending); assert.equal(closed,2);
+});
+
+test('新登录覆盖期间旧请求失败不污染替换会话',async () => {
+  let reject,started;
+  const began = new Promise(resolve => { started = resolve; });
+  const r = runtime({async *chat() { started(); await new Promise((_resolve,no) => { reject = no; }); }});
+  await r.login();
+  const request = r.ask(); await began;
+  await r.login('A','fresh'); reject({upstream_code:710022004});
+  assert.equal((await request).status,429);
+  assert.equal(r.auths.get('A').doubao.state,'ready');
+});
+
+test('签到提交前持久预约，超时、重启及并发操作保持单次提交',async () => {
+  let claims = 0,queries = 0;
+  const r = runtime({async checkin(_session,{queryOnly,reserve}) {
+    queries++;
+    if (queryOnly) return {status:'pending'};
+    await reserve(); claims++; throw Error('claim timeout');
+  }},{now:() => Date.parse('2026-11-13T10:00:00+08:00')});
+  await r.login();
+  const check = () => r.run('A',getAuth => r.plugin.auth.checkin(getAuth));
+  assert.equal((await check()).outcome,'failed');
+  assert.equal(r.auths.get('A').doubao.attempt.reserved,true);
+  r.restart();
+  const results = await Promise.all([check(),check()]);
+  assert(results.every(result => result.outcome === 'failed'));
+  assert.equal(claims,1); assert.equal(queries,2);
+});
+
+test('浏览器登录复用隔离会话并清理临时目录，支持取消',async () => {
+  let profile,closed = 0,loggedIn = true,onLaunch;
+  const r = runtime({}, {browserOptions:{pollMs:1,discover:async () => [{id:'chrome',name:'Fixture Chrome'}],
+    launch:async (_browser,path) => {
+      profile = path;
+      onLaunch?.();
+      return {cookies:async () => loggedIn ? [{name:'sessionid',value:'fixture',domain:'.doubao.com',path:'/'}] : [],
+        dispose:async () => { closed++; }};
+    },
+  }});
+  const method = r.plugin.auth.methods[0];
+  const auth = await method.authorize();
+  assert.equal(auth.opened,true);
+  assert.equal((await auth.callback()).type,'success');
+  assert.equal(closed,1); await assert.rejects(access(profile));
+  loggedIn = false;
+  const abort = new AbortController();
+  const launched = new Promise(resolve => { onLaunch = resolve; });
+  const cancelled = auth.callback(undefined,{signal:abort.signal});
+  await launched;
+  abort.abort();
+  await assert.rejects(cancelled);
+  assert.equal(closed,2); await assert.rejects(access(profile));
+});
