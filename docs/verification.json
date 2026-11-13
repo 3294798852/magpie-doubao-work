@@ -1,20 +1,21 @@
 {
   "date": "2026-11-13",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
   "local": {
     "os": "Windows 11",
     "node": "24.18.0",
     "syntax": "passed",
-    "testsPassed": 37,
+    "testsPassed": 43,
     "testsFailed": 0
   },
   "hostSmoke": {
     "bun": "1.4.4",
+    "version": "0.5.2",
     "result": "passed",
     "upstream": "synthetic fixtures",
-    "version": "0.5.0"
+    "legacyDevicePersistence": "passed"
   },
   "search": {
     "languages": [
@@ -70,20 +71,16 @@
       }
     ]
   },
-  "codeCommit": "94b27fbfbb140573c09e2c53555befc68230e2c7",
+  "codeCommit": "80d32778a71feeb25d5ac41609a75cca87c8144f",
   "ci": {
-    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43396251416",
+    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43399635133",
     "jobs": [
-      {
-        "name": "Tests (ubuntu-24.04, Node 22)",
-        "conclusion": "success"
-      },
       {
         "name": "Tests (windows-2025, Node 24)",
         "conclusion": "success"
       },
       {
-        "name": "Tests (macos-15, Node 22)",
+        "name": "Tests (ubuntu-24.04, Node 22)",
         "conclusion": "success"
       },
       {
@@ -91,11 +88,15 @@
         "conclusion": "success"
       },
       {
-        "name": "Tests (macos-15, Node 24)",
+        "name": "Tests (ubuntu-24.04, Node 24)",
         "conclusion": "success"
       },
       {
-        "name": "Tests (ubuntu-24.04, Node 24)",
+        "name": "Tests (macos-15, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (macos-15, Node 24)",
         "conclusion": "success"
       }
     ]
@@ -142,6 +143,43 @@
     "pending": [
       "Other nine models",
       "Live Linux/macOS accounts",
+      "Live daily check-in"
+    ]
+  },
+  "portability": {
+    "version": "0.5.2",
+    "source": "Windows account export",
+    "destination": "isolated WSL Ubuntu on the same physical computer",
+    "os": "linux",
+    "runtime": "Bun 1.4.4",
+    "model": "person-deepseek-v4-1-flash-261017",
+    "gateway": {
+      "status": 200,
+      "text": "OK",
+      "deviceContextPreserved": true,
+      "destinationDeviceLookups": 0
+    },
+    "plugin": {
+      "host": "Magpie Bun host",
+      "status": 200,
+      "text": "OK",
+      "done": true,
+      "deviceContextPreserved": true,
+      "isolatedHome": true
+    },
+    "passed": true,
+    "windows": {
+      "version": "0.5.2",
+      "provider": "doubaowork",
+      "model": "person-deepseek-v4-1-flash-261017",
+      "exit": 0,
+      "output": "✓ chat       5363 ms · person-deepseek-v4-1-flash-261017",
+      "error": ""
+    },
+    "pending": [
+      "Other physical computers and network exits",
+      "Live macOS accounts",
+      "Other nine models",
       "Live daily check-in"
     ]
   }

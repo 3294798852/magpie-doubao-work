@@ -1,6 +1,6 @@
 # 独立插件验证记录 / Standalone plugin verification
 
-验证日期为 2026-11-13，当前版本为 0.5.1。
+验证日期为 2026-11-13，当前版本为 0.5.2。
 
 ## 来源与改动范围
 
@@ -12,13 +12,29 @@ The plugin uses the gateway v0.5.0 implementation. The extraction keeps native p
 
 | 环境 | 方法 | 结果 |
 | --- | --- | --- |
-| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，37 项测试通过 |
-| Windows，Bun 1.4.4，0.5.0 基线 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的账号导入、模型、文本、流式、额度、签到、验证状态与重启隔离通过 |
+| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，43 项测试通过 |
+| Windows，Bun 1.4.4，0.5.2 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的设备自动保存、旧账号持久升级、模型、文本、流式、额度、签到、验证状态与重启隔离通过 |
 | 中英文搜索字段 | `test/metadata.test.mjs` | 31 个检索词或词组在 zh/en 两种语言中均匹配，共 62 项匹配检查 |
 
-宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。基线联调使用合成账号，0.5.1 的真实账号结果记录如下。
+宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。宿主回归使用合成账号，真实账号结果记录如下。
 
-The baseline host smoke test uses synthetic accounts. Version 0.5.1 adds live Windows account validation below.
+The host regression uses synthetic accounts. Live Windows and isolated Linux account results follow.
+
+## 0.5.2 跨环境账号迁移
+
+源环境为 Windows 11，目标为同一物理电脑上的 WSL Ubuntu，运行 Bun 1.4.4。Windows 网关通过正常的面板导出入口生成账号备份，自动保存本机客户端的设备上下文。备份通过本机进程标准输入传入 Ubuntu，验收结束后清理临时凭据目录。
+
+| 目标入口 | 操作 | 真实结果 |
+| --- | --- | --- |
+| Ubuntu 原生网关 | 面板预览、导入、核验后调用 HTTP 文本接口 | HTTP 200，文本 `OK`，目标设备文件查询 0 次 |
+| Ubuntu Magpie Bun 宿主 | 全新 HOME / XDG 目录，正常账号导入后调用流式接口 | HTTP 200，文本 `OK`，包含 `[DONE]`，保存的设备上下文与源备份一致 |
+| 本机 Magpie 0.1.3620 | 定向安装插件 0.5.2，执行 `provider test` | 非流式文本通过，5363 ms |
+
+新增回归覆盖账号设备优先级、v2/v3 元数据保留、新登录保存、旧登录升级，以及设备查询期间替换登录。网关另外覆盖正常 HTTP 导出、空白目标导入与重启。每个账号使用自己携带的设备信息，目标环境取得完整上下文后直接使用该会话。
+
+其他实体设备和不同网络出口的真实调用、macOS 真实账号、其余 9 个模型及真实签到待验收。
+
+Live migration from Windows to isolated WSL Ubuntu passed for the native gateway and the real Magpie Bun host. The gateway made zero destination-device lookups. The plugin used a fresh home directory and preserved the imported account context. Separate physical computers and network exits remain outside this live validation.
 
 ## 0.5.1 真实账号与设备参数
 
@@ -30,11 +46,11 @@ Windows 11、Magpie 0.1.3620、Bun 1.4.4。账号持有人手工完成登录和�
 | `magpie provider test doubaowork …` | 同上 | 非流式聊天通过，6916 ms |
 | 本机 Magpie `/v1/chat/completions` | `doubaowork/person-deepseek-v4-1-flash-261017` | HTTP 200，SSE 返回 `OK` 和 `[DONE]`，9900 ms |
 
-账号恢复为 `ready`，旧社区豆包插件已停用。其余 9 个模型、Linux/macOS 真实账号和真实签到仍待逐项验收。5 项新增回归覆盖设备优先级、配套指纹、平台路径及查询缓存。
+该阶段账号恢复为 `ready`，旧社区豆包插件已停用。5 项新增回归覆盖设备优先级、配套指纹、平台路径及查询缓存。Linux 迁移的后续结果见 0.5.2 记录。
 
 设备参数处理参考现有上游协议实现，并用本机真实账号完成复测。[Agent2Providers 的设备上下文实现](https://github.com/ProvidersPlugin/Agent2Providers/blob/3055f416841c1393ec04294a702603fd41e840aa/crates/providers/src/providers/doubaowork/client.rs)
 
-With device context supplied, live native text, Magpie CLI non-streaming and the local Magpie SSE endpoint passed. The other models, live Linux/macOS accounts and live check-in remain pending.
+With device context supplied, live native text, Magpie CLI non-streaming and the local Magpie SSE endpoint passed. Subsequent Linux migration results are recorded under version 0.5.2.
 
 ## 搜索机制
 
@@ -56,9 +72,9 @@ Both localized summaries contain the tested Chinese and English aliases. The reg
 
 [CI](https://github.com/3294798852/magpie-doubao-work/actions/workflows/ci.yml) 在 Windows、Ubuntu、macOS 上分别使用 Node.js 22 和 24 运行语法与测试检查。发行验收数据保存在 [verification.json](verification.json)。
 
-[0.5.1 运行 43396251416](https://github.com/3294798852/magpie-doubao-work/actions/runs/43396251416) 的全部 6 个任务通过，验证代码提交为 `94b27fbfbb140573c09e2c53555befc68230e2c7`。0.5.0 的 GitHub 安装与宿主基线记录保留在 `verification.json`。
+[0.5.2 运行 43399635133](https://github.com/3294798852/magpie-doubao-work/actions/runs/43399635133) 的全部 6 个任务通过，验证代码提交为 `80d32778a71feeb25d5ac41609a75cca87c8144f`。0.5.0 的 GitHub 安装基线记录保留在 `verification.json`。
 
-All six version 0.5.1 CI jobs passed. Version 0.5.0 GitHub installation and synthetic host results remain as baseline records. Subsequent publication-record updates affect documentation.
+All six version 0.5.2 CI jobs passed. The version 0.5.0 GitHub installation remains a baseline record. Subsequent publication-record updates affect documentation.
 
 ## GitHub 与市场检索
 
