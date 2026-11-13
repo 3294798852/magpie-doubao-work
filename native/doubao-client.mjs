@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {normalizeProviderError,upstreamCode} from './protocol.mjs';
 import {decodeEvents} from './doubao-stream.mjs';
+import {createDesktopDeviceReader} from './desktop-device.mjs';
 
 const ORIGIN='https://www.doubao.com';
 const ROUTES=Object.freeze({
@@ -28,7 +29,7 @@ export function vendorError(status,v={}){
  if(error.type==='upstream_rate_limited'&&Number.isFinite(v.retryAfterMs))error.retryAfterMs=v.retryAfterMs;
  return error;
 }
-function endpoint(route,s){
+async function endpoint(route,s,readDevice){
  const u=new URL(ROUTES[route],ORIGIN);
  const q=route==='identity'?{
   account_sdk_source:'web',sdk_version:'2.2.5',aid:'582478',real_aid:'582478',
@@ -41,8 +42,10 @@ function endpoint(route,s){
   'use-olympus-account':'1',language:'zh',region:'CN',sys_region:'CN',
  };
  const cookies=new Map(s.cookieHeader.split('; ').map(k=>[k.slice(0,k.indexOf('=')),k.slice(k.indexOf('=')+1)]));
- for(const [k,v] of Object.entries({...q,device_id:s.deviceId||cookies.get('device_id'),web_id:s.webId||cookies.get('web_id'),
-  fp:s.fingerprint||cookies.get('s_v_web_id')||cookies.get('fp'),chromium_version:s.chromiumVersion,channel:s.channel}))
+ let device=s.deviceId||cookies.get('device_id');
+ if(!device&&route!=='identity')device=await readDevice();
+ for(const [k,v] of Object.entries({...q,device_id:device,web_id:s.webId||cookies.get('web_id'),
+  fp:device?'verify_'+device:s.fingerprint||cookies.get('s_v_web_id')||cookies.get('fp'),chromium_version:s.chromiumVersion,channel:s.channel}))
   if(v)u.searchParams.set(k,v);
  return u.href;
 }
@@ -159,7 +162,7 @@ function dailyTasks(value,group){
  visit(value.data||value,group,0);return [...results.values()];
 }
 
-export function createDoubaoClient({fetchImpl=fetch,now=Date.now}={}){
+export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=createDesktopDeviceReader({now})}={}){
  // Only fixed Doubao endpoints are reachable; redirects are never followed.
  const catalogs=new Map();
  async function request(s,route,data,{signal}={}){
@@ -167,7 +170,7 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now}={}){
   const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(route==='chat'?600000:25000)]):AbortSignal.timeout(route==='chat'?600000:25000);
   let response;
   try{
-   response=await fetchImpl(endpoint(route,s),{method,redirect:'error',signal:requestSignal,
+   response=await fetchImpl(await endpoint(route,s,readDevice),{method,redirect:'error',signal:requestSignal,
     headers:{Cookie:s.cookieHeader,Origin:ORIGIN,Referer:ORIGIN+'/chat/','Agw-Js-Conv':'str',
      Accept:route==='chat'?'text/event-stream, application/json':'application/json','Content-Type':'application/json',
      ...(s.userAgent?{'User-Agent':s.userAgent}:{})},...(method==='POST'?{body:JSON.stringify(data)}:{})});

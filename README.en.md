@@ -46,7 +46,17 @@ The plugin accepts v2/v3 account backups, with up to 20 accounts and 512 KB per 
 
 Magpie manages account switches, proxies, routing and check-in scheduling. Before claiming a daily reward, the plugin persists the submission state. Later attempts query the upstream result when a claim is still unconfirmed.
 
-An account that requires official verification is paused. Complete verification on Doubao's website with the same account, then sign in to that account again in Magpie.
+### 710022004 and device context
+
+The desktop API uses `device_id` with `fp=verify_<device_id>`. Since 0.5.1, the plugin uses the account snapshot's `deviceId`, then the `device_id` cookie, then `aha.device.device_id` from the local Doubao client's `Local State`. File lookup results are cached for 60 seconds.
+
+- Windows uses `%LOCALAPPDATA%\Doubao\User Data\Local State`.
+- Linux uses `$XDG_CONFIG_HOME/Doubao/Local State`, defaulting to `~/.config/Doubao/Local State`.
+- macOS uses `~/Library/Application Support/Doubao/Local State`.
+
+The `DoubaoWork` product directory is also supported at these locations. Headless Linux can use an account backup containing `session.deviceId` from the account holder's own client. Device identifiers and credentials stay on the user's computer.
+
+If the website and desktop client work while the gateway returns `710022004`, check the plugin version and device context. Sign in again to restore an account paused before the fix. If official verification is still requested, complete it on Doubao's website with the same account, then sign in again in Magpie.
 
 ## Move from the gateway's bundled plugin
 

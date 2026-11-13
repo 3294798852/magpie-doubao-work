@@ -46,7 +46,17 @@ magpie accounts import doubaowork /absolute/path/doubao-accounts.json --yes
 
 账号开关、代理、路由和签到在 Magpie 中管理。开启签到后，由 Magpie 调度，插件在领取请求前持久记录当日提交状态。结果待确认时，后续操作回查上游状态。
 
-上游要求人工验证时，账号进入暂停状态。使用同一个账号在豆包官网完成验证后，在 Magpie 重新登录该账号。
+### 710022004 与设备参数
+
+桌面接口使用 `device_id` 及对应的 `fp=verify_<device_id>`。0.5.1 起，插件优先使用账号快照中的 `deviceId`，其次使用 `device_id` Cookie，再读取本机豆包客户端 `Local State` 的 `aha.device.device_id`。文件读取结果缓存 60 秒。
+
+- Windows 使用 `%LOCALAPPDATA%\Doubao\User Data\Local State`。
+- Linux 使用 `$XDG_CONFIG_HOME/Doubao/Local State`，默认位于 `~/.config/Doubao/Local State`。
+- macOS 使用 `~/Library/Application Support/Doubao/Local State`。
+
+同时兼容上述路径中的 `DoubaoWork` 产品目录。无桌面客户端的 Linux 可使用包含本人客户端 `session.deviceId` 的账号备份。设备号与登录凭据保存在用户本机。
+
+官网和客户端正常、网关持续返回 `710022004` 时，检查插件版本和设备参数。修复参数后，已暂停账号需重新登录恢复。上游继续要求人工验证时，使用同一个账号在豆包官网完成验证，再在 Magpie 重新登录。
 
 ## 从网关内置插件迁移
 

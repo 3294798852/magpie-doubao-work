@@ -13,7 +13,7 @@ const meta={data:{entry_list:[{active_switch_conf:{menu_conf:{item_list:[{model_
 const reply=v=>new Response(JSON.stringify(v),{headers:{'Content-Type':'application/json'}});
 function mock(chat){
  const seen=[];
- return {seen,client:createDoubaoClient({fetchImpl:async(raw,options)=>{
+ return {seen,client:createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async(raw,options)=>{
   const u=new URL(raw);assert.equal(u.origin,'https://www.doubao.com');
   assert.equal(options.redirect,'error');assert.equal(options.headers.Cookie,s.cookieHeader);
   seen.push(u.pathname);
@@ -55,7 +55,7 @@ test('上游 JSON、SSE 验证错误均保留代码，断流不被当成正常�
 });
 
 test('额度字段向 Magpie 保留未知百分比与免限状态',async()=>{
- const client=createDoubaoClient({fetchImpl:async raw=>{
+ const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async raw=>{
   if(new URL(raw).pathname.endsWith('/entry/config/'))return reply({data:{membership_display_name:'Fixture'}});
   return reply({data:{member_info:{hasActiveSubscription:true},window_limit_section:{window_limit_groups:[{
    feature_group_name:'文本',window_limits:[
@@ -73,4 +73,39 @@ test('额度字段向 Magpie 保留未知百分比与免限状态',async()=>{
  assert.equal(data.windows[2].used,25);
  assert.equal(data.windows[2].amount,3);
  assert.equal(data.windows[2].limit,12);
+});
+
+test('聊天请求保留账号设备优先级，并让 device_id 与 fp 使用同一设备',async()=>{
+ const cases=[
+  {session:{...s,deviceId:'account-device',fingerprint:'web-fingerprint'},device:'account-device'},
+  {session:{cookieHeader:s.cookieHeader+'; device_id=cookie-device'},device:'cookie-device'},
+  {session:{...s,fingerprint:'web-fingerprint'},device:'desktop-device'},
+ ];
+ for(const {session,device} of cases){
+  const paths=[];
+  const client=createDoubaoClient({readDevice:async()=>{
+   assert.equal(device,'desktop-device');return 'desktop-device';
+  },fetchImpl:async raw=>{
+   const url=new URL(raw);
+   assert.equal(url.searchParams.get('device_id'),device);
+   assert.equal(url.searchParams.get('fp'),'verify_'+device);
+   paths.push(url.pathname);
+   if(url.pathname==='/alice/user/launch')return reply({data:{assistant_bot_id:'fixture-bot'}});
+   if(url.pathname==='/alice/slot/action_bar_v3/brief_list')return reply(meta);
+   return new Response(frame('CHUNK_DELTA',{text:'OK'})+frame('SSE_REPLY_END',{}),
+    {headers:{'Content-Type':'text/event-stream'}});
+  }});
+  assert.deepEqual(await consume(client.chat(session,msg)),[{content:'OK'}]);
+  assert.deepEqual(paths,['/alice/user/launch','/alice/slot/action_bar_v3/brief_list','/chat/completion']);
+ }
+});
+
+test('未找到桌面设备时保留原会话的指纹参数',async()=>{
+ const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async raw=>{
+  const url=new URL(raw);
+  assert.equal(url.searchParams.has('device_id'),false);
+  assert.equal(url.searchParams.get('fp'),'web-fingerprint');
+  return url.pathname==='/alice/user/launch'?reply({data:{assistant_bot_id:'fixture-bot'}}):reply(meta);
+ }});
+ assert.deepEqual(await client.models({...s,fingerprint:'web-fingerprint'}),['fixture-model']);
 });
