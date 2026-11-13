@@ -40,3 +40,5 @@ export function createDesktopDeviceReader({platform = process.platform,home = ho
     return cached.value;
   };
 }
+
+export const readDesktopDeviceId = createDesktopDeviceReader();

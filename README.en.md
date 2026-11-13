@@ -36,7 +36,7 @@ The repository description, README, GitHub topics and package keywords carry bil
 
 A graphical desktop needs Chrome or Edge. Chromium is supported on Linux. Sign-in opens a dedicated temporary browser session. After you complete the official login, the plugin verifies the account identity and lets Magpie store it.
 
-On headless Linux, export an account JSON from the [standalone Doubao Work gateway](https://github.com/3294798852/doubao-work-gateway), then import it.
+On headless Linux, export an account JSON from version 0.5.2 or later of the [standalone Doubao Work gateway](https://github.com/3294798852/doubao-work-gateway), then use Magpie's account import entry. Magpie versions supporting provider-account imports also accept this command.
 
 ```sh
 magpie accounts import doubaowork /absolute/path/doubao-accounts.json --yes
@@ -48,13 +48,17 @@ Magpie manages account switches, proxies, routing and check-in scheduling. Befor
 
 ### 710022004 and device context
 
-The desktop API uses `device_id` with `fp=verify_<device_id>`. Since 0.5.1, the plugin uses the account snapshot's `deviceId`, then the `device_id` cookie, then `aha.device.device_id` from the local Doubao client's `Local State`. File lookup results are cached for 60 seconds.
+The desktop API uses `device_id` with `fp=verify_<device_id>`. The plugin uses the account snapshot's `deviceId`, then the `device_id` cookie, then `aha.device.device_id` from the local Doubao client's `Local State`. File lookup results are cached for 60 seconds.
+
+Version 0.5.2 saves device context in Magpie credentials during sign-in, import and the first load of an older account. The account carries that context when moved to another computer or a server. Each account gets device information from its owner's session, client or backup.
 
 - Windows uses `%LOCALAPPDATA%\Doubao\User Data\Local State`.
 - Linux uses `$XDG_CONFIG_HOME/Doubao/Local State`, defaulting to `~/.config/Doubao/Local State`.
 - macOS uses `~/Library/Application Support/Doubao/Local State`.
 
-The `DoubaoWork` product directory is also supported at these locations. Headless Linux can use an account backup containing `session.deviceId` from the account holder's own client. Device identifiers and credentials stay on the user's computer.
+The `DoubaoWork` product directory is also supported at these locations. Headless Linux can use an account backup containing `session.deviceId`. Gateway 0.5.2 automatically includes captured device context in its exports, so the destination receives the complete session. Device identifiers and credentials stay on the user's computer.
+
+A live Windows-to-isolated-Ubuntu migration passed for both the gateway and the Magpie Bun host, returning `OK`. The destination used a separate home directory, and the gateway performed zero local-device lookups. See the [verification record](docs/verification.md) for scope.
 
 If the website and desktop client work while the gateway returns `710022004`, check the plugin version and device context. Sign in again to restore an account paused before the fix. If official verification is still requested, complete it on Doubao's website with the same account, then sign in again in Magpie.
 

@@ -1,4 +1,5 @@
 import {jsonShape,label,validId,parseAccountBackup} from './account-backup.mjs';
+import {readDesktopDeviceId} from './desktop-device.mjs';
 
 const fail = message => Object.assign(new Error(message), {status:400});
 
@@ -20,6 +21,19 @@ export function normalizeSession(s) {
   for (const key of ['deviceId','webId','fingerprint','clientVersion','userAgent','channel','chromiumVersion'])
     if (typeof s[key] === 'string' && s[key].length <= 512 && /^[\x20-\x7e]+$/.test(s[key])) session[key] = s[key];
   return session;
+}
+
+// Keep the account's device context when its session moves to another host.
+export async function withDeviceContext(session,readDevice = readDesktopDeviceId) {
+  let device = session.deviceId;
+  if (!device) {
+    const cookie = session.cookieHeader.split(';').find(part => part.trim().startsWith('device_id='));
+    device = cookie?.trim().slice('device_id='.length) || await readDevice();
+  }
+  if (!device) return session;
+  const fingerprint = 'verify_'+device;
+  if (session.deviceId === device && session.fingerprint === fingerprint) return session;
+  return {...session,deviceId:device,fingerprint};
 }
 
 // Shared with the standalone panel and Magpie's file-import hook.

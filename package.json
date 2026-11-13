@@ -1,6 +1,6 @@
 {
   "name": "magpie-doubao-work",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "type": "module",
   "description": "Magpie 豆包 / 豆包工作 / Doubao Work provider plugin with browser login, JSON import, OpenAI text streaming, quotas and daily check-in.",

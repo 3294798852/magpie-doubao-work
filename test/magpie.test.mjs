@@ -27,11 +27,12 @@ function runtime(overrides = {},options = {}) {
     assert(scope.getStore(),'auth.set must run in an account scope');
     auths.set(scope.getStore(),structuredClone(body));
   }}}};
-  let plugin = createDoubaoPlugin(input,{doubao,...options});
+  const settings = {doubao,readDevice:async () => undefined,...options};
+  let plugin = createDoubaoPlugin(input,settings);
   const run = (key,operation) => scope.run(key,() => operation(async () => structuredClone(auths.get(key))));
   return {
     get plugin() { return plugin; }, auths,run,
-    restart() { plugin = createDoubaoPlugin(input,{doubao,...options}); },
+    restart() { plugin = createDoubaoPlugin(input,settings); },
     async login(key = 'A',cookie = 'alpha',version = 3) {
       const [result] = await plugin.auth.import([backup(cookie,version)]);
       assert.equal(result.type,'success');
@@ -83,6 +84,55 @@ test('v2/v3 账号导入向上游核验身份，错类文件与失效会话分�
   assert(!JSON.stringify(results.slice(0,2)).includes('PRIVATE_FIXTURE'));
   const nodes = await r.plugin.auth.import([JSON.stringify({schema:'doubao-work-nodes/v1',nodes:[]})]);
   assert.equal(nodes[0].type,'failed');
+});
+
+test('新登录固化设备信息，迁入另一主机后使用账号自己的上下文',async()=>{
+  const source=runtime({}, {readDevice:async()=> 'source-device'});
+  const signed=await source.login();
+  const session=JSON.parse(signed.refresh).session;
+  assert.equal(session.deviceId,'source-device');
+  assert.equal(session.fingerprint,'verify_source-device');
+  const target=runtime({async *chat(received){
+    assert.deepEqual(received,session);yield {content:'portable'};
+  }},{readDevice:async()=>assert.fail('Destination device must not be read.')});
+  const text=JSON.stringify({schema:'doubao-work-accounts/v1',version:3,
+    accounts:[{id:'portable',provider:'doubaowork',session}]});
+  const [result]=await target.plugin.auth.import([text]);
+  assert.equal(result.type,'success');
+  target.auths.set('A',{...result,type:'oauth'});
+  assert.equal((await (await target.ask()).json()).choices[0].message.content,'portable');
+});
+
+test('旧 Magpie 登录补齐设备后持久保存，保留暂停和签到状态',async()=>{
+  let lookups=0;
+  const r=runtime({}, {readDevice:async()=>{lookups++;return 'legacy-device';}});
+  r.auths.set('A',{type:'oauth',uid:'legacy:0',access:'legacy-generation',
+    refresh:JSON.stringify({version:1,session:{cookieHeader:'sessionid=legacy'}}),
+    doubao:{state:'needs_verification',attempt:{day:'2026-11-13',reserved:true,status:'pending'}}});
+  const state=structuredClone(r.auths.get('A').doubao);
+  await r.run('A',getAuth=>r.plugin.auth.loader(getAuth));
+  assert.equal(JSON.parse(r.auths.get('A').refresh).session.deviceId,'legacy-device');
+  assert.deepEqual(r.auths.get('A').doubao,state);
+  r.restart();
+  await r.run('A',getAuth=>r.plugin.auth.loader(getAuth));
+  assert.equal(lookups,1);
+});
+
+test('设备查询期间替换登录，旧会话升级保持新登录资料',async()=>{
+  let started,release;
+  const waiting=new Promise(resolve=>{started=resolve;});
+  const blocked=new Promise(resolve=>{release=resolve;});
+  const r=runtime({}, {readDevice:async()=>{started();await blocked;return 'old-device';}});
+  r.auths.set('A',{type:'oauth',uid:'same:0',access:'old-generation',
+    refresh:JSON.stringify({version:1,session:{cookieHeader:'sessionid=old'}}),doubao:{state:'ready'}});
+  const migration=r.run('A',getAuth=>r.plugin.auth.loader(getAuth));
+  await waiting;
+  const replacement={type:'oauth',uid:'same:0',access:'new-generation',
+    refresh:JSON.stringify({version:1,session:{cookieHeader:'sessionid=new',deviceId:'new-device',fingerprint:'verify_new-device'}}),
+    doubao:{state:'ready'}};
+  r.auths.set('A',structuredClone(replacement));
+  release();await migration;
+  assert.deepEqual(r.auths.get('A'),replacement);
 });
 
 test('非流式文本与推理共用响应编码器，保留角色和文本分块',async () => {

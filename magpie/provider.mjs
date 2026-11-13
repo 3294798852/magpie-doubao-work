@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {dayTime} from '../native/calendar.mjs';
 import {createDoubaoClient} from '../native/doubao-client.mjs';
-import {normalizeSession,backupRows} from '../native/session.mjs';
+import {normalizeSession,backupRows,withDeviceContext} from '../native/session.mjs';
+import {readDesktopDeviceId} from '../native/desktop-device.mjs';
 import {normalizeProviderError} from '../native/protocol.mjs';
 import {onFailure,routable} from '../native/account-state.mjs';
 import {parseChat} from '../native/completion.mjs';
@@ -43,24 +44,40 @@ function describeModel(id) {
   };
 }
 
-export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = Date.now, browserOptions} = {}) {
+export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = Date.now,
+  browserOptions,readDevice = readDesktopDeviceId} = {}) {
   const updates = new Map(), active = new Set();
   const today = () => dayTime(new Date(now())).day;
   const tomorrow = () => new Date(Date.parse(today()+'T00:00:00+08:00')+86400000).toISOString();
 
-  async function updateState(auth,getAuth,change) {
+  async function updateAuth(auth,getAuth,change) {
     const previous = updates.get(auth.uid) || Promise.resolve();
     const task = previous.catch(() => {}).then(async () => {
       const current = await getAuth();
       // An old request must leave a replacement sign-in's state intact.
       if (!current || current.access !== auth.access) return false;
-      const state = change(current.doubao || freshState());
-      await input.client.auth.set({path:{id:ID},body:{...current,doubao:state}});
+      const body = change(current);
+      if (body === current) return false;
+      await input.client.auth.set({path:{id:ID},body});
       return true;
     });
     updates.set(auth.uid,task);
     try { return await task; }
     finally { if (updates.get(auth.uid) === task) updates.delete(auth.uid); }
+  }
+
+  function updateState(auth,getAuth,change) {
+    return updateAuth(auth,getAuth,current => ({...current,doubao:change(current.doubao || freshState())}));
+  }
+
+  async function sessionFor(getAuth) {
+    const auth = await getAuth(), stored = sessionOf(auth);
+    const session = await withDeviceContext(stored,readDevice);
+    if (session !== stored) {
+      const refresh = JSON.stringify({version:1,session});
+      await updateAuth(auth,getAuth,current => current.refresh === refresh ? current : {...current,refresh});
+    }
+    return {auth,session};
   }
 
   async function failed(auth,getAuth,error,requestId) {
@@ -79,7 +96,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
   }
 
   async function signIn(raw,{signal} = {}) {
-    const session = normalizeSession(raw);
+    const session = await withDeviceContext(normalizeSession(raw),readDevice);
     const info = await doubao.identity(session,{signal});
     signal?.throwIfAborted();
     return {type:'success',refresh:JSON.stringify({version:1,session}),access:randomUUID(),expires:0,
@@ -87,7 +104,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
   }
 
   async function* chat(getAuth,body,{signal,requestId}) {
-    const auth = await getAuth(), session = sessionOf(auth);
+    const {auth,session} = await sessionFor(getAuth);
     ready(auth,now());
     const leave = enter(auth);
     let produced = false;
@@ -112,8 +129,8 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
       const target = new URL(request.url);
       if (target.origin !== 'https://www.doubao.com') throw fail(400,'豆包插件接口地址有误。');
       if (request.method === 'GET' && target.pathname === '/v1/models') {
-        const auth = await getAuth();
-        const ids = await doubao.models(sessionOf(auth),{signal:request.signal});
+        const {session} = await sessionFor(getAuth);
+        const ids = await doubao.models(session,{signal:request.signal});
         return Response.json({object:'list',data:ids.map(id => ({id,object:'model',owned_by:ID}))});
       }
       if (request.method !== 'POST' || target.pathname !== '/v1/chat/completions')
@@ -142,7 +159,8 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
       async models(_provider,{auth,signal} = {}) {
         if (!auth) return {};
         try {
-          const ids = await doubao.models(sessionOf(auth),{signal});
+          const session = await withDeviceContext(sessionOf(auth),readDevice);
+          const ids = await doubao.models(session,{signal});
           return Object.fromEntries(ids.map(id => [id,describeModel(id)]));
         } catch (error) {
           if (error?.state === 'needs_login') error.signIn = 'expired';
@@ -183,10 +201,11 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
         return results;
       },
       async loader(getAuth) {
+        await sessionFor(getAuth);
         return {apiKey:'doubaowork-plugin',baseURL:API,fetch:(url,init) => fetchRequest(getAuth,url,init)};
       },
       async usage(getAuth,_provider,{signal} = {}) {
-        const auth = await getAuth(), session = sessionOf(auth);
+        const {auth,session} = await sessionFor(getAuth);
         try {
           const data = await doubao.quota(session,{signal});
           return {plan:data.plan,user:auth.name || auth.accountId,
@@ -198,7 +217,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
         }
       },
       async checkin(getAuth,_provider,{signal} = {}) {
-        const auth = await getAuth(), session = sessionOf(auth);
+        const {auth,session} = await sessionFor(getAuth);
         let leave;
         try {
           ready(auth,now());

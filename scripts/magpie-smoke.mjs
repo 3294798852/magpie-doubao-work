@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
+import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createInterface} from 'node:readline';
+import {desktopStatePaths} from '../native/desktop-device.mjs';
 
 const bun = process.env.MAGPIE_BUN_BIN;
 const hostFile = process.env.MAGPIE_HOST_FILE;
@@ -13,10 +14,11 @@ const project = resolve(process.env.DW_PLUGIN_PACKAGE || fileURLToPath(new URL('
 const root = await mkdtemp(join(tmpdir(),'doubaowork-magpie-host-'));
 const authPath = join(root,'auth.json'), fixture = join(root,'fixture.mjs'), callsPath = join(root,'calls.jsonl');
 const checks = [];
+const deviceEnv = {...process.env,LOCALAPPDATA:join(root,'device-data'),HOME:root,XDG_CONFIG_HOME:join(root,'.config')};
 let host;
 
 function startHost() {
-  const child = spawn(bun,['--preload',fixture,hostFile],{cwd:root,windowsHide:true,stdio:['pipe','pipe','pipe']});
+  const child = spawn(bun,['--preload',fixture,hostFile],{cwd:root,env:deviceEnv,windowsHide:true,stdio:['pipe','pipe','pipe']});
   const pending = new Map();
   let sequence = 0, stderr = '';
   child.stderr.on('data',chunk => { stderr = (stderr+chunk).slice(-8192); });
@@ -79,6 +81,9 @@ const ask = (account,content = 'ping',stream = false) => host.rpc('fetch',{
 
 try {
   await mkdir(join(root,'work'));
+  const deviceFile = desktopStatePaths(process.platform,root,deviceEnv)[0];
+  await mkdir(dirname(deviceFile),{recursive:true});
+  await writeFile(deviceFile,JSON.stringify({aha:{device:{device_id:'fixture-device'}}}));
   await writeFile(fixture,`
 import {appendFileSync} from 'node:fs';
 const callsPath = ${JSON.stringify(callsPath)};
@@ -89,6 +94,9 @@ globalThis.fetch = async (url,options) => {
   const request = new Request(url,options);
   const u = new URL(request.url);
   if (u.origin !== 'https://www.doubao.com') throw Error('unexpected fixture destination');
+  if (u.pathname !== '/passport/account/info/v2/' &&
+      (u.searchParams.get('device_id') !== 'fixture-device' || u.searchParams.get('fp') !== 'verify_fixture-device'))
+    throw Error('fixture device context missing');
   appendFileSync(callsPath,JSON.stringify({path:u.pathname})+'\\n');
   switch (u.pathname) {
     case '/passport/account/info/v2/': return json({message:'success',data:{
@@ -117,11 +125,22 @@ globalThis.fetch = async (url,options) => {
   assert.deepEqual(imported.results.map(row => row.status),['added','added']);
   const [alpha,bravo] = imported.results.map(row => row.account);
   assert.notEqual(alpha,bravo); checks.push('account-import');
+  await host.stop(); host = undefined;
+  const legacy = JSON.parse(await readFile(authPath,'utf8'));
+  const refresh = JSON.parse(legacy[alpha].refresh);
+  assert.equal(refresh.session.deviceId,'fixture-device');
+  delete refresh.session.deviceId; delete refresh.session.fingerprint;
+  legacy[alpha].refresh = JSON.stringify(refresh);
+  await writeFile(authPath,JSON.stringify(legacy));
+  await init();
   const providers = await host.rpc('providers');
   const model = providers[0].models.find(model => model.id === 'fixture-model');
   assert(model); assert.equal(model.image,false); assert.deepEqual(model.inputs,['text']); checks.push('model-discovery');
   const plain = await ask(alpha);
   assert.equal(plain.status,200); assert.equal(JSON.parse(plain.text).choices[0].message.content,'宿主验证通过');
+  const upgraded = JSON.parse(await readFile(authPath,'utf8'));
+  assert.equal(JSON.parse(upgraded[alpha].refresh).session.deviceId,'fixture-device');
+  checks.push('legacy-device-persistence');
   checks.push('nonstream-chat');
   const stream = await ask(bravo,'ping',true);
   assert.equal(stream.status,200); assert.match(stream.text,/宿主验证通过/); assert.match(stream.text,/\[DONE\]/);
