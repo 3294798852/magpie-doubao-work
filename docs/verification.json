@@ -261,6 +261,44 @@
       "rawCaptureAvailable": false,
       "exactFailureReproduced": false
     },
-    "scope": "End-level handling, encoded block snapshots, mixed deltas, message-scoped block IDs, reasoning metadata, CR framing and standard upstream usage"
+    "scope": "End-level handling, encoded block snapshots, mixed deltas, message-scoped block IDs, reasoning metadata, CR framing and standard upstream usage",
+    "ci": [
+      {
+        "repository": "magpie-doubao-work",
+        "commit": "1227efc4e2c553b94647902bbe8e7104a16f1420",
+        "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43412890988",
+        "conclusion": "success",
+        "jobsPassed": 6
+      },
+      {
+        "repository": "doubao-work-gateway",
+        "commit": "3b50fff7f06c0ca10d434a41e729596ce5aa12e5",
+        "url": "https://github.com/3294798852/doubao-work-gateway/actions/runs/43412901170",
+        "conclusion": "success",
+        "jobsPassed": 6
+      }
+    ],
+    "localGateway": [
+      {
+        "version": "0.6.1",
+        "model": "doubaowork/person-deepseek-v4-1-flash-261017",
+        "stream": false,
+        "status": 200,
+        "finish": "stop",
+        "standardUsagePresent": false,
+        "passed": true
+      },
+      {
+        "version": "0.6.1",
+        "model": "doubaowork/person-deepseek-v4-1-flash-261017",
+        "stream": true,
+        "status": 200,
+        "finish": "stop",
+        "done": true,
+        "errors": [],
+        "standardUsagePresent": false,
+        "passed": true
+      }
+    ]
   }
 }

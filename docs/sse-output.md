@@ -32,6 +32,10 @@
 
 Windows 本地语法检查通过，插件 60 项、网关 105 项测试通过。真实 Magpie Bun 1.4.4 宿主通过短答快照、流式用量、工具调用和工具结果回传。
 
+两仓库在 Windows、Ubuntu、macOS 与 Node.js 22 / 24 的全部 12 个 CI 任务通过。[插件 CI](https://github.com/3294798852/magpie-doubao-work/actions/runs/43412890988) · [网关 CI](https://github.com/3294798852/doubao-work-gateway/actions/runs/43412901170)
+
+本机 Magpie 0.1.3620 已安装插件 0.6.1。DeepSeek V4.1 Flash 通过真实 HTTP 入口分别完成流式与非流式“解释缓存”请求，均返回完整答案和正常结束。旧社区插件保持停用。
+
 本次修复覆盖可复现的协议缺陷。远端“我还在学习中”这一文案的来源，以及其所用客户端和请求模式，仍缺少对应证据。
 
 ## English
