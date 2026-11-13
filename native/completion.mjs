@@ -11,6 +11,10 @@ export function parseChat(value) {
   if (value.response_format && value.response_format.type !== 'text' || value.n !== undefined && value.n !== 1)
     throw fail(400, '当前接口支持单路文本与 function 工具。');
   const tools = parseToolOptions(value);
+  const streamOptions = value.stream_options;
+  if (streamOptions != null && (typeof streamOptions !== 'object' || Array.isArray(streamOptions) ||
+      streamOptions.include_usage !== undefined && typeof streamOptions.include_usage !== 'boolean'))
+    throw fail(400, 'stream_options.include_usage 应为布尔值。');
   if (!Array.isArray(value.messages) || value.messages.length < 1 || value.messages.length > 100)
     throw fail(400, '请提供 1–100 条消息。');
   const messages = value.messages.map(message => {
@@ -41,7 +45,8 @@ export function parseChat(value) {
   });
   if (!messages.some(message => message.role === 'user' && message.content.trim()))
     throw fail(400, '至少需要一条非空用户消息。');
-  return {model: value.model, messages, stream: value.stream === true,...tools};
+  return {model: value.model, messages, stream: value.stream === true,...tools,
+    ...(streamOptions?.include_usage !== undefined ? {stream_options:{include_usage:streamOptions.include_usage}} : {})};
 }
 
 export function completionError(error, requestId) {
@@ -60,12 +65,14 @@ export function completionError(error, requestId) {
 export async function* completionChunks(deltas, body, {requestId, signal, now = Date.now} = {}) {
   const info = {id: 'chatcmpl-' + requestId, created: Math.floor(now() / 1000), model: body.model};
   const chunk = (delta, finish_reason = null) => ({...info, object: 'chat.completion.chunk',
-    choices: [{index: 0, delta, finish_reason}]});
+    choices: [{index: 0, delta, finish_reason}],...(body.stream_options?.include_usage ? {usage:null} : {})});
   const event = value => 'data: ' + JSON.stringify(value) + '\n\n';
-  let text = '', reasoning = '', size = 0, started = false;
+  let text = '', reasoning = '', size = 0, started = false, usage;
   const calls = [];
-  for await (const delta of deltas) {
+  for await (const {usage: nextUsage,...delta} of deltas) {
     signal?.throwIfAborted();
+    if (nextUsage) usage = nextUsage;
+    if (!Object.keys(delta).length) continue;
     size += (delta.content || '').length + (delta.reasoning_content || '').length;
     if (delta.tool_calls?.length) {
       size += JSON.stringify(delta.tool_calls).length;
@@ -88,9 +95,12 @@ export async function* completionChunks(deltas, body, {requestId, signal, now = 
   const finish = calls.length ? 'tool_calls' : 'stop';
   if (body.stream) {
     yield event(chunk({}, finish));
+    if (body.stream_options?.include_usage && usage)
+      yield event({...info,object:'chat.completion.chunk',choices:[],usage});
     yield 'data: [DONE]\n\n';
   } else {
     yield {...info, object: 'chat.completion', choices: [{index: 0, message: {role: 'assistant', content: text || (calls.length ? null : ''),
-      ...(calls.length ? {tool_calls:calls} : {}),...(reasoning ? {reasoning_content: reasoning} : {})}, finish_reason: finish}]};
+      ...(calls.length ? {tool_calls:calls} : {}),...(reasoning ? {reasoning_content: reasoning} : {})}, finish_reason: finish}],
+      ...(usage ? {usage} : {})};
   }
 }

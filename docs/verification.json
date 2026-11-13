@@ -1,22 +1,24 @@
 {
   "date": "2026-11-13",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
   "local": {
     "os": "Windows 11",
     "node": "24.18.0",
     "syntax": "passed",
-    "testsPassed": 51,
+    "testsPassed": 60,
     "testsFailed": 0
   },
   "hostSmoke": {
     "bun": "1.4.4",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "result": "passed",
     "upstream": "synthetic fixtures",
     "toolCalling": "passed",
-    "toolResultContinuation": "passed"
+    "toolResultContinuation": "passed",
+    "shortSseSnapshot": "passed",
+    "tokenUsage": "passed"
   },
   "search": {
     "languages": [
@@ -208,5 +210,57 @@
       "legacy functions/function_call interface",
       "Other client versions and live models"
     ]
+  },
+  "sseOutput": {
+    "baselineVersion": "0.6.0",
+    "baselineTests": 8,
+    "baselineFailed": 7,
+    "newRegressionTests": 9,
+    "realModels": [
+      {
+        "model": "person-deepseek-v4-1-flash-261017",
+        "events": 31,
+        "endTypes": [
+          1,
+          2,
+          3,
+          3
+        ],
+        "upstreamStandardUsage": false,
+        "streamPassed": true,
+        "nonstreamPassed": true
+      },
+      {
+        "model": "5",
+        "events": 34,
+        "endTypes": [
+          1,
+          2,
+          3,
+          3
+        ],
+        "upstreamStandardUsage": false,
+        "streamPassed": true,
+        "nonstreamPassed": true
+      },
+      {
+        "model": "seed-lite-7b",
+        "events": 48,
+        "endTypes": [
+          1,
+          2,
+          3,
+          3
+        ],
+        "upstreamStandardUsage": false,
+        "streamPassed": true,
+        "nonstreamPassed": true
+      }
+    ],
+    "remoteReport": {
+      "rawCaptureAvailable": false,
+      "exactFailureReproduced": false
+    },
+    "scope": "End-level handling, encoded block snapshots, mixed deltas, message-scoped block IDs, reasoning metadata, CR framing and standard upstream usage"
   }
 }

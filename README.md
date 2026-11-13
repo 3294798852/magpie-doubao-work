@@ -79,6 +79,8 @@ magpie plugin use github:3294798852/magpie-doubao-work doubaowork
 
 0.6.0 支持客户端 function 工具，包含 `auto`、`none`、`required`、指定函数、并行开关和工具结果回传。两版共用工具协议转换与响应编码，纯工具回复使用 `finish_reason=tool_calls`。工具在客户端执行，工具回合在完整响应校验后输出调用事件。[排查与修复方案](docs/tool-calling.md)
 
+0.6.1 修复 SSE 提前结束、完整快照漏读和混合增量重复输出，并传递上游提供的标准 token 用量。[短回复排查与验收](docs/sse-output.md)
+
 严格约束解码 `strict=true`、自定义 grammar 工具、结构化输出、图片和工作流待实现。模型上下文与输出上限仍待补充。
 
 从源码验收可运行以下命令，需要 Node.js 22 或更高版本。

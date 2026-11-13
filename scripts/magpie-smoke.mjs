@@ -121,7 +121,12 @@ globalThis.fetch = async (url,options) => {
         text = declaration.messages.at(-1).role === 'tool' ? declaration.messages.at(-1).content
           : JSON.stringify({[marker[0]]:[{name:'lookup',arguments:{key:'fixture'}}]});
       }
-      return new Response(frame('CHUNK_DELTA',{text})+frame('SSE_REPLY_END',{}),
+      const content_block = [{block_id:'fixture-answer',block_type:10000,content:{text_block:{text}}}];
+      return new Response(frame('SSE_REPLY_END',{end_type:1})+
+        frame('STREAM_MSG_NOTIFY',{meta:{message_id:'fixture-message'},content:{content_block}})+
+        frame('FULL_MSG_NOTIFY',{message:{message_id:'fixture-message',user_type:2,content:JSON.stringify(content_block)}})+
+        frame('SSE_REPLY_END',{end_type:2})+
+        frame('SSE_REPLY_END',{end_type:3,usage:{prompt_tokens:7,completion_tokens:3,total_tokens:10}}),
         {headers:{'Content-Type':'text/event-stream'}});
     }
     default: throw Error('unexpected fixture path');
@@ -146,12 +151,14 @@ globalThis.fetch = async (url,options) => {
   assert(model); assert.equal(model.image,false); assert.deepEqual(model.inputs,['text']); checks.push('model-discovery');
   const plain = await ask(alpha);
   assert.equal(plain.status,200); assert.equal(JSON.parse(plain.text).choices[0].message.content,'宿主验证通过');
+  assert.equal(JSON.parse(plain.text).usage.total_tokens,10); checks.push('short-sse-snapshot');
   const upgraded = JSON.parse(await readFile(authPath,'utf8'));
   assert.equal(JSON.parse(upgraded[alpha].refresh).session.deviceId,'fixture-device');
   checks.push('legacy-device-persistence');
   checks.push('nonstream-chat');
-  const stream = await ask(bravo,'ping',true);
+  const stream = await ask(bravo,'ping',true,{stream_options:{include_usage:true}});
   assert.equal(stream.status,200); assert.match(stream.text,/宿主验证通过/); assert.match(stream.text,/\[DONE\]/);
+  assert.match(stream.text,/"choices":\[\],"usage"/); checks.push('token-usage');
   checks.push('stream-chat');
   const tools = [{type:'function',function:{name:'lookup',parameters:{type:'object'}}}];
   const toolReply = await ask(alpha,'request tool',false,{tools,tool_choice:'required'});

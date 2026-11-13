@@ -1,6 +1,6 @@
 # 独立插件验证记录 / Standalone plugin verification
 
-验证日期为 2026-11-13，当前版本为 0.6.0。
+验证日期为 2026-11-13，当前版本为 0.6.1。
 
 ## 来源与改动范围
 
@@ -12,13 +12,19 @@ The plugin uses the gateway v0.5.0 implementation. The extraction keeps native p
 
 | 环境 | 方法 | 结果 |
 | --- | --- | --- |
-| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，51 项测试通过 |
-| Windows，Bun 1.4.4，0.6.0 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的工具调用、结果回传、设备保存、模型、文本、流式、额度、签到和状态隔离通过 |
+| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，60 项测试通过 |
+| Windows，Bun 1.4.4，0.6.1 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的短答快照、用量、工具调用、结果回传、设备保存、模型、文本、流式、额度、签到和状态隔离通过 |
 | 中英文搜索字段 | `test/metadata.test.mjs` | 34 个检索词或词组在 zh/en 两种语言中均匹配，共 68 项匹配检查 |
 
 宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。宿主回归使用合成账号，真实账号结果记录如下。
 
 The host regression uses synthetic accounts. Live Windows and isolated Linux account results follow.
+
+## 0.6.1 短回复与 SSE 输出
+
+0.6.0 的八项协议回归中七项失败，修复后连同 Magpie 正常入口共九项通过。修复按消息、答案和回复层级结束读取，接入 JSON 编码快照，统一直接文本增量和块状态，并传递上游标准用量。
+
+三份真实“解释缓存”响应来自 DeepSeek V4.1 Flash、豆包 2.1 Pro、豆包 2.1 Lite。每份原报文经流式与非流式插件入口均完整返回，上游未提供标准 token 用量。远端反馈的模型、版本和六帧报文无法取得，原反馈的具体故障仍待确认。[问题、方案与验收](sse-output.md)
 
 ## 0.6.0 客户端工具调用
 

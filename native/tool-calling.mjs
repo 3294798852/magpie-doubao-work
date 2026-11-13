@@ -82,6 +82,7 @@ export function createToolTurn(body) {
 export async function* toolDeltas(deltas,turn) {
   let text = '', size = 0;
   for await (const delta of deltas) {
+    if (delta.usage) yield {usage:delta.usage};
     if (delta.reasoning_content) yield {reasoning_content:delta.reasoning_content};
     if (delta.content) {
       size += delta.content.length;
