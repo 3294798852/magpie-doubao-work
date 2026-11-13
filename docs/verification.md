@@ -1,6 +1,6 @@
 # 独立插件验证记录 / Standalone plugin verification
 
-验证日期为 2026-11-13，当前版本为 0.5.2。
+验证日期为 2026-11-13，当前版本为 0.6.0。
 
 ## 来源与改动范围
 
@@ -12,13 +12,27 @@ The plugin uses the gateway v0.5.0 implementation. The extraction keeps native p
 
 | 环境 | 方法 | 结果 |
 | --- | --- | --- |
-| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，43 项测试通过 |
-| Windows，Bun 1.4.4，0.5.2 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的设备自动保存、旧账号持久升级、模型、文本、流式、额度、签到、验证状态与重启隔离通过 |
-| 中英文搜索字段 | `test/metadata.test.mjs` | 31 个检索词或词组在 zh/en 两种语言中均匹配，共 62 项匹配检查 |
+| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，51 项测试通过 |
+| Windows，Bun 1.4.4，0.6.0 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的工具调用、结果回传、设备保存、模型、文本、流式、额度、签到和状态隔离通过 |
+| 中英文搜索字段 | `test/metadata.test.mjs` | 34 个检索词或词组在 zh/en 两种语言中均匹配，共 68 项匹配检查 |
 
 宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。宿主回归使用合成账号，真实账号结果记录如下。
 
 The host regression uses synthetic accounts. Live Windows and isolated Linux account results follow.
+
+## 0.6.0 客户端工具调用
+
+0.5.2 的请求校验、工具消息、能力声明和响应编码均缺少工具链路。0.6.0 通过共用的客户端 function 工具适配解决这些问题，实施与范围见 [工具调用排查记录](tool-calling.md)。
+
+| 正常入口 | 客户端 | 真实结果 |
+| --- | --- | --- |
+| 独立网关 `/v1/chat/completions` | dsh 0.2.0-rc.2 headless | 客户端读取临时文件，结果回传后，模型正确返回文件随机值。两次模型请求均完成 |
+| 本机 Magpie `/v1/chat/completions` | 同上 | `read` 调用与结果使用同一 ID，最终回答与文件随机值一致 |
+| Magpie Bun 宿主 | 合成账号联调 | 纯工具回复、结果回传、流式结束和既有状态回归通过 |
+
+真实调用使用 `person-deepseek-v4-1-flash-261017`。测试采用独立 DSH_HOME 与只读工作区，临时文件只用于回合验收。工具由 dsh 执行。严格约束解码、自定义 grammar 工具、旧版函数接口及其他客户端版本、其他模型的真实工具行为待验收。
+
+Live dsh function-tool round trips passed through both the native HTTP gateway and the running local Magpie gateway. Each client read a temporary file and used its result in the final answer. Strict constrained decoding, custom grammar tools and the legacy function interface remain pending.
 
 ## 0.5.2 跨环境账号迁移
 
@@ -62,8 +76,8 @@ Both localized summaries contain the tested Chinese and English aliases. The reg
 | --- | --- |
 | 名称 | `Magpie 豆包工作插件 / Doubao Work Plugin` |
 | 名称长度 | 46 UTF-8 bytes |
-| English summary | 241 UTF-8 bytes |
-| 中文摘要 | 238 UTF-8 bytes |
+| English summary | 274 UTF-8 bytes |
+| 中文摘要 | 270 UTF-8 bytes |
 | 名称 / 摘要上限 | 80 / 300 UTF-8 bytes |
 
 搜索来源见 [Magpie 仓库发现](https://github.com/yetone/magpie/blob/main/internal/plugin/github.go) 和 [客户端检索](https://github.com/yetone/magpie/blob/main/internal/gui/assets/plugins.js)。
@@ -72,9 +86,9 @@ Both localized summaries contain the tested Chinese and English aliases. The reg
 
 [CI](https://github.com/3294798852/magpie-doubao-work/actions/workflows/ci.yml) 在 Windows、Ubuntu、macOS 上分别使用 Node.js 22 和 24 运行语法与测试检查。发行验收数据保存在 [verification.json](verification.json)。
 
-[0.5.2 运行 43399635133](https://github.com/3294798852/magpie-doubao-work/actions/runs/43399635133) 的全部 6 个任务通过，验证代码提交为 `80d32778a71feeb25d5ac41609a75cca87c8144f`。0.5.0 的 GitHub 安装基线记录保留在 `verification.json`。
+[0.6.0 运行 43409547828](https://github.com/3294798852/magpie-doubao-work/actions/runs/43409547828) 的全部 6 个任务通过，验证代码提交为 `8219662479e4faae7a6feee915f5dffeb6fcbb0c`。0.5.0 的 GitHub 安装基线记录保留在 `verification.json`。
 
-All six version 0.5.2 CI jobs passed. The version 0.5.0 GitHub installation remains a baseline record. Subsequent publication-record updates affect documentation.
+All six version 0.6.0 CI jobs passed. The version 0.5.0 GitHub installation remains a baseline record. Subsequent publication-record updates affect documentation.
 
 ## GitHub 与市场检索
 
