@@ -1,6 +1,6 @@
 # 独立插件验证记录 / Standalone plugin verification
 
-验证日期为 2026-11-13，版本为 0.5.0。
+验证日期为 2026-11-13，当前版本为 0.5.1。
 
 ## 来源与改动范围
 
@@ -12,13 +12,29 @@ The plugin uses the gateway v0.5.0 implementation. The extraction keeps native p
 
 | 环境 | 方法 | 结果 |
 | --- | --- | --- |
-| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，32 项测试通过 |
-| Windows，Bun 1.4.4 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的账号导入、模型、文本、流式、额度、签到、验证状态与重启隔离通过 |
+| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，37 项测试通过 |
+| Windows，Bun 1.4.4，0.5.0 基线 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的账号导入、模型、文本、流式、额度、签到、验证状态与重启隔离通过 |
 | 中英文搜索字段 | `test/metadata.test.mjs` | 31 个检索词或词组在 zh/en 两种语言中均匹配，共 62 项匹配检查 |
 
-宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。联调使用合成账号。真实账号登录、调用及签到由账号持有人完成联调。
+宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。基线联调使用合成账号，0.5.1 的真实账号结果记录如下。
 
-The host smoke test uses synthetic accounts. Live account login, inference and check-in validation remain with an account holder.
+The baseline host smoke test uses synthetic accounts. Version 0.5.1 adds live Windows account validation below.
+
+## 0.5.1 真实账号与设备参数
+
+Windows 11、Magpie 0.1.3620、Bun 1.4.4。账号持有人手工完成登录和官网验证，模型目录返回 10 个 ID。仅保存 Cookie 时，文本请求持续返回 `710022004`。本机客户端的设备号位于 `%LOCALAPPDATA%\Doubao\User Data\Local State`，补齐 `device_id` 与 `fp=verify_<device_id>` 后通过以下检查。
+
+| 入口 | 模型 | 结果 |
+| --- | --- | --- |
+| 原生客户端 | `person-deepseek-v4-1-flash-261017` | 完整文本 `OK` |
+| `magpie provider test doubaowork …` | 同上 | 非流式聊天通过，6916 ms |
+| 本机 Magpie `/v1/chat/completions` | `doubaowork/person-deepseek-v4-1-flash-261017` | HTTP 200，SSE 返回 `OK` 和 `[DONE]`，9900 ms |
+
+账号恢复为 `ready`，旧社区豆包插件已停用。其余 9 个模型、Linux/macOS 真实账号和真实签到仍待逐项验收。5 项新增回归覆盖设备优先级、配套指纹、平台路径及查询缓存。
+
+设备参数处理参考现有上游协议实现，并用本机真实账号完成复测。[Agent2Providers 的设备上下文实现](https://github.com/ProvidersPlugin/Agent2Providers/blob/3055f416841c1393ec04294a702603fd41e840aa/crates/providers/src/providers/doubaowork/client.rs)
+
+With device context supplied, live native text, Magpie CLI non-streaming and the local Magpie SSE endpoint passed. The other models, live Linux/macOS accounts and live check-in remain pending.
 
 ## 搜索机制
 
@@ -40,9 +56,9 @@ Both localized summaries contain the tested Chinese and English aliases. The reg
 
 [CI](https://github.com/3294798852/magpie-doubao-work/actions/workflows/ci.yml) 在 Windows、Ubuntu、macOS 上分别使用 Node.js 22 和 24 运行语法与测试检查。发行验收数据保存在 [verification.json](verification.json)。
 
-[运行 43390879214](https://github.com/3294798852/magpie-doubao-work/actions/runs/43390879214) 的全部 6 个任务通过，验证代码提交为 `9bd4beaff6574dcfc4b326f37746d9f62267ea90`。从 GitHub 安装该提交后的目录也通过 Magpie Bun 宿主模拟联调。后续发布记录更新只涉及文档，代码验收复用该提交。
+[0.5.1 运行 43396251416](https://github.com/3294798852/magpie-doubao-work/actions/runs/43396251416) 的全部 6 个任务通过，验证代码提交为 `94b27fbfbb140573c09e2c53555befc68230e2c7`。0.5.0 的 GitHub 安装与宿主基线记录保留在 `verification.json`。
 
-All six CI jobs passed. A GitHub-installed copy of the verified code commit also passed the real Magpie Bun-host smoke test. Subsequent publication-record updates affect documentation.
+All six version 0.5.1 CI jobs passed. Version 0.5.0 GitHub installation and synthetic host results remain as baseline records. Subsequent publication-record updates affect documentation.
 
 ## GitHub 与市场检索
 

@@ -1,19 +1,20 @@
 {
   "date": "2026-11-13",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
   "local": {
     "os": "Windows 11",
     "node": "24.18.0",
     "syntax": "passed",
-    "testsPassed": 32,
+    "testsPassed": 37,
     "testsFailed": 0
   },
   "hostSmoke": {
     "bun": "1.4.4",
     "result": "passed",
-    "upstream": "synthetic fixtures"
+    "upstream": "synthetic fixtures",
+    "version": "0.5.0"
   },
   "search": {
     "languages": [
@@ -69,9 +70,9 @@
       }
     ]
   },
-  "codeCommit": "9bd4beaff6574dcfc4b326f37746d9f62267ea90",
+  "codeCommit": "94b27fbfbb140573c09e2c53555befc68230e2c7",
   "ci": {
-    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43390879214",
+    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43396251416",
     "jobs": [
       {
         "name": "Tests (ubuntu-24.04, Node 22)",
@@ -103,11 +104,45 @@
     "specifier": "github:3294798852/magpie-doubao-work",
     "commit": "9bd4beaff6574dcfc4b326f37746d9f62267ea90",
     "bun": "1.4.4",
-    "hostSmoke": "passed"
+    "hostSmoke": "passed",
+    "version": "0.5.0"
   },
   "market": {
     "topic": "magpie-plugin",
     "repository": "3294798852/magpie-doubao-work",
     "gatewayDiscoveryTopic": "removed"
+  },
+  "live": {
+    "os": "Windows 11",
+    "version": "0.5.1",
+    "magpie": "0.1.3620",
+    "bun": "1.4.4",
+    "modelsDiscovered": 10,
+    "model": "person-deepseek-v4-1-flash-261017",
+    "before": {
+      "status": 429,
+      "code": 710022004
+    },
+    "deviceSource": "%LOCALAPPDATA%/Doubao/User Data/Local State",
+    "nativeText": "OK",
+    "nonstream": {
+      "entry": "magpie provider test",
+      "result": "passed",
+      "durationMs": 6916
+    },
+    "stream": {
+      "entry": "Magpie /v1/chat/completions",
+      "status": 200,
+      "text": "OK",
+      "done": true,
+      "durationMs": 9900
+    },
+    "accountState": "ready",
+    "legacyPluginDisabled": true,
+    "pending": [
+      "Other nine models",
+      "Live Linux/macOS accounts",
+      "Live daily check-in"
+    ]
   }
 }
