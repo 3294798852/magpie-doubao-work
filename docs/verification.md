@@ -39,3 +39,24 @@ Both localized summaries contain the tested Chinese and English aliases. The reg
 ## 持续集成
 
 [CI](https://github.com/3294798852/magpie-doubao-work/actions/workflows/ci.yml) 在 Windows、Ubuntu、macOS 上分别使用 Node.js 22 和 24 运行语法与测试检查。发行验收数据保存在 [verification.json](verification.json)。
+
+[运行 43390879214](https://github.com/3294798852/magpie-doubao-work/actions/runs/43390879214) 的全部 6 个任务通过，验证代码提交为 `9bd4beaff6574dcfc4b326f37746d9f62267ea90`。从 GitHub 安装该提交后的目录也通过 Magpie Bun 宿主模拟联调。后续发布记录更新只涉及文档，代码验收复用该提交。
+
+All six CI jobs passed. A GitHub-installed copy of the verified code commit also passed the real Magpie Bun-host smoke test. Subsequent publication-record updates affect documentation.
+
+## GitHub 与市场检索
+
+以下 8 组实际 GitHub 查询均返回本仓库。查询使用公开仓库名称、描述和主题，结果见 `verification.json`。
+
+| 查询用途 | 查询内容 |
+| --- | --- |
+| 市场发现 | `repo:3294798852/magpie-doubao-work topic:magpie-plugin archived:false fork:false` |
+| 完整仓库名 | `magpie-doubao-work in:name` |
+| 中文名称组合 | `豆包工作 magpie in:name,description` |
+| 中文别名组合 | `豆包插件 magpie in:name,description` |
+| 英文名称组合 | `Doubao Work Magpie in:name,description` |
+| 连写别名组合 | `doubaowork magpie in:name,description` |
+| 中文短名称组合 | `豆包 magpie in:name,description` |
+| 英文短名称组合 | `doubao plugin in:name,description` |
+
+All eight live GitHub search queries returned this repository. Magpie's discovery topic is attached to the standalone repository. The gateway repository's plugin documentation points here, and its plugin-discovery topic was removed.

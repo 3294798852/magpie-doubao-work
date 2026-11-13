@@ -3,15 +3,111 @@
   "version": "0.5.0",
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
-  "local": {"os": "Windows 11", "node": "24.18.0", "syntax": "passed", "testsPassed": 32, "testsFailed": 0},
-  "hostSmoke": {"bun": "1.4.4", "result": "passed", "upstream": "synthetic fixtures"},
+  "local": {
+    "os": "Windows 11",
+    "node": "24.18.0",
+    "syntax": "passed",
+    "testsPassed": 32,
+    "testsFailed": 0
+  },
+  "hostSmoke": {
+    "bun": "1.4.4",
+    "result": "passed",
+    "upstream": "synthetic fixtures"
+  },
   "search": {
-    "languages": ["zh", "en"],
+    "languages": [
+      "zh",
+      "en"
+    ],
     "queriesPerLanguage": 31,
     "matchedChecks": 62,
     "nameBytes": 46,
     "enSummaryBytes": 241,
     "zhSummaryBytes": 238,
-    "matcher": "Magpie plugins.js current-language summary and substring matching"
+    "matcher": "Magpie plugins.js current-language summary and substring matching",
+    "github": [
+      {
+        "query": "repo:3294798852/magpie-doubao-work topic:magpie-plugin archived:false fork:false",
+        "total": 1,
+        "found": true
+      },
+      {
+        "query": "magpie-doubao-work in:name",
+        "total": 2,
+        "found": true
+      },
+      {
+        "query": "豆包工作 magpie in:name,description",
+        "total": 5,
+        "found": true
+      },
+      {
+        "query": "豆包插件 magpie in:name,description",
+        "total": 1,
+        "found": true
+      },
+      {
+        "query": "Doubao Work Magpie in:name,description",
+        "total": 5,
+        "found": true
+      },
+      {
+        "query": "doubaowork magpie in:name,description",
+        "total": 2,
+        "found": true
+      },
+      {
+        "query": "豆包 magpie in:name,description",
+        "total": 8,
+        "found": true
+      },
+      {
+        "query": "doubao plugin in:name,description",
+        "total": 87,
+        "found": true
+      }
+    ]
+  },
+  "codeCommit": "9bd4beaff6574dcfc4b326f37746d9f62267ea90",
+  "ci": {
+    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43390879214",
+    "jobs": [
+      {
+        "name": "Tests (ubuntu-24.04, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (windows-2025, Node 24)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (macos-15, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (windows-2025, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (macos-15, Node 24)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (ubuntu-24.04, Node 24)",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "githubInstall": {
+    "specifier": "github:3294798852/magpie-doubao-work",
+    "commit": "9bd4beaff6574dcfc4b326f37746d9f62267ea90",
+    "bun": "1.4.4",
+    "hostSmoke": "passed"
+  },
+  "market": {
+    "topic": "magpie-plugin",
+    "repository": "3294798852/magpie-doubao-work",
+    "gatewayDiscoveryTopic": "removed"
   }
 }
