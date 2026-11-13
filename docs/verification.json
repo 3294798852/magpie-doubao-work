@@ -76,22 +76,15 @@
   },
   "codeCommit": "8219662479e4faae7a6feee915f5dffeb6fcbb0c",
   "ci": {
-    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43409547828",
+    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43412890988",
+    "codeCommit": "1227efc4e2c553b94647902bbe8e7104a16f1420",
     "jobs": [
-      {
-        "name": "Tests (macos-15, Node 24)",
-        "conclusion": "success"
-      },
       {
         "name": "Tests (ubuntu-24.04, Node 24)",
         "conclusion": "success"
       },
       {
-        "name": "Tests (windows-2025, Node 24)",
-        "conclusion": "success"
-      },
-      {
-        "name": "Tests (macos-15, Node 22)",
+        "name": "Tests (windows-2025, Node 22)",
         "conclusion": "success"
       },
       {
@@ -99,7 +92,15 @@
         "conclusion": "success"
       },
       {
-        "name": "Tests (windows-2025, Node 22)",
+        "name": "Tests (macos-15, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (macos-15, Node 24)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (windows-2025, Node 24)",
         "conclusion": "success"
       }
     ]
