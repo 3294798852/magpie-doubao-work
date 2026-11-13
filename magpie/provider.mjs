@@ -38,7 +38,7 @@ function ready(auth,now) {
 
 function describeModel(id) {
   return {id,providerID:ID,name:id,api:{id,url:API,npm:NPM},temperature:false,
-    capabilities:{temperature:false,reasoning:false,attachment:false,toolcall:false,
+    capabilities:{temperature:false,reasoning:false,attachment:false,toolcall:true,
       input:{text:true,image:false,audio:false,video:false,pdf:false},
       output:{text:true,image:false,audio:false,video:false,pdf:false}},
   };
@@ -111,10 +111,10 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
     try {
       for await (const delta of doubao.chat(session,body,{signal})) {
         signal?.throwIfAborted();
-        if (delta.content) produced = true;
+        if (delta.content || delta.tool_calls?.length) produced = true;
         yield delta;
       }
-      if (!produced) throw fail(502,'豆包工作未返回文本。','upstream_empty_response');
+      if (!produced) throw fail(502,'豆包工作未返回文本或工具调用。','upstream_empty_response');
     } catch (error) {
       signal?.throwIfAborted();
       throw await failed(auth,getAuth,error,requestId);

@@ -9,6 +9,7 @@ const queries = [
   'Magpie 豆包工作','Magpie provider plugin','provider plugin','供应商插件',
   'browser login','浏览器登录','JSON','导入','OpenAI','text chat','SSE','streaming',
   '流式','quotas','额度','daily check-in','自动签到','Windows','Linux','macOS',
+  'function tools','工具调用','dsh',
 ];
 
 test('独立插件的名称、入口与中英文元数据满足 Magpie 字段约束',async () => {

@@ -73,10 +73,10 @@ async function init() {
 const backup = JSON.stringify({schema:'doubao-work-accounts/v1',version:3,accounts:['alpha','bravo'].map(id => ({
   id,provider:'doubaowork',name:'Fixture',session:{cookieHeader:'sessionid='+id},
 }))});
-const ask = (account,content = 'ping',stream = false) => host.rpc('fetch',{
+const ask = (account,content = 'ping',stream = false,extra = {}) => host.rpc('fetch',{
   provider:'doubaowork',account,model:'fixture-model',npm:'@ai-sdk/openai-compatible',
   url:'https://www.doubao.com/v1/chat/completions',method:'POST',headers:{'Content-Type':'application/json'},
-  body:Buffer.from(JSON.stringify({model:'fixture-model',messages:[{role:'user',content}],stream})).toString('base64'),
+  body:Buffer.from(JSON.stringify({model:'fixture-model',messages:[{role:'user',content}],stream,...extra})).toString('base64'),
 });
 
 try {
@@ -112,8 +112,16 @@ globalThis.fetch = async (url,options) => {
     case '/alice/ug/campaign/item/reward/claim/': claimed = true; return json({code:0});
     case '/chat/completion': {
       const body = await request.json();
-      if (body.messages[0].content_block[0].content.text_block.text === 'challenge') return json({error_code:710022004});
-      return new Response(frame('CHUNK_DELTA',{text:'宿主验证通过'})+frame('SSE_REPLY_END',{}),
+      const prompt = body.messages[0].content_block[0].content.text_block.text;
+      if (prompt === 'challenge') return json({error_code:710022004});
+      let text = '宿主验证通过';
+      const marker = prompt.match(/magpie_calls_[a-f0-9]+/);
+      if (marker) {
+        const declaration = JSON.parse(prompt.slice(prompt.lastIndexOf('\\n')+1));
+        text = declaration.messages.at(-1).role === 'tool' ? declaration.messages.at(-1).content
+          : JSON.stringify({[marker[0]]:[{name:'lookup',arguments:{key:'fixture'}}]});
+      }
+      return new Response(frame('CHUNK_DELTA',{text})+frame('SSE_REPLY_END',{}),
         {headers:{'Content-Type':'text/event-stream'}});
     }
     default: throw Error('unexpected fixture path');
@@ -145,6 +153,17 @@ globalThis.fetch = async (url,options) => {
   const stream = await ask(bravo,'ping',true);
   assert.equal(stream.status,200); assert.match(stream.text,/宿主验证通过/); assert.match(stream.text,/\[DONE\]/);
   checks.push('stream-chat');
+  const tools = [{type:'function',function:{name:'lookup',parameters:{type:'object'}}}];
+  const toolReply = await ask(alpha,'request tool',false,{tools,tool_choice:'required'});
+  assert.equal(toolReply.status,200);
+  const toolChoice = JSON.parse(toolReply.text).choices[0];
+  assert.equal(toolChoice.finish_reason,'tool_calls');assert.equal(toolChoice.message.content,null);
+  const call = toolChoice.message.tool_calls[0];assert.equal(call.function.name,'lookup');
+  checks.push('tool-call');
+  const toolResult = await ask(alpha,'',true,{tools,messages:[{role:'user',content:'request tool'},
+    toolChoice.message,{role:'tool',tool_call_id:call.id,content:'client-tool-result'}]});
+  assert.equal(toolResult.status,200);assert.match(toolResult.text,/client-tool-result/);assert.match(toolResult.text,/\[DONE\]/);
+  checks.push('tool-result-roundtrip');
   const usage = await host.rpc('usage',{provider:'doubaowork',account:alpha});
   assert.equal(usage.plan,'Fixture Plan'); assert.equal(usage.windows[0].used,25); checks.push('quota');
   assert.equal((await host.rpc('checkin',{provider:'doubaowork',account:alpha})).outcome,'claimed');

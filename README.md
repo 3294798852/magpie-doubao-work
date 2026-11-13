@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-`magpie-doubao-work` 为 Magpie 提供豆包工作供应商 `doubaowork`，支持 Windows、Linux 和 macOS。通过豆包网页登录或账号 JSON 导入接入，提供模型发现、文本对话、流式输出、额度查询和每日签到。
+`magpie-doubao-work` 为 Magpie 提供豆包工作供应商 `doubaowork`，支持 Windows、Linux 和 macOS。通过豆包网页登录或账号 JSON 导入接入，提供模型发现、文本对话、function 工具调用、流式输出、额度查询和每日签到。
 
 ## 安装
 
@@ -77,7 +77,9 @@ magpie plugin use github:3294798852/magpie-doubao-work doubaowork
 
 支持 OpenAI 风格 `chat/completions` 文本接口、流式与非流式回复，以及 `reasoning_content` 透传。取消会中止上游请求，输出按消费者读取速度推进。
 
-工具调用、结构化输出、图片和工作流仍待实现。模型上下文与输出上限仍待补充。真实账号登录、模型调用和签到由账号持有人完成联调。
+0.6.0 支持客户端 function 工具，包含 `auto`、`none`、`required`、指定函数、并行开关和工具结果回传。两版共用工具协议转换与响应编码，纯工具回复使用 `finish_reason=tool_calls`。工具在客户端执行，工具回合在完整响应校验后输出调用事件。[排查与修复方案](docs/tool-calling.md)
+
+严格约束解码 `strict=true`、自定义 grammar 工具、结构化输出、图片和工作流待实现。模型上下文与输出上限仍待补充。
 
 从源码验收可运行以下命令，需要 Node.js 22 或更高版本。
 

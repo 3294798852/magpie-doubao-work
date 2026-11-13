@@ -3,6 +3,7 @@ import {normalizeProviderError,upstreamCode} from './protocol.mjs';
 import {decodeEvents} from './doubao-stream.mjs';
 import {readDesktopDeviceId} from './desktop-device.mjs';
 import {withDeviceContext} from './session.mjs';
+import {createToolTurn,toolDeltas} from './tool-calling.mjs';
 
 const ORIGIN='https://www.doubao.com';
 const ROUTES=Object.freeze({
@@ -236,8 +237,8 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
    const model=Object.hasOwn(models,body.model)?models[body.model]:undefined;
    if(!model)throw fail(404,'此账号的豆包模型目录已变化。');
    const id=randomUUID(),at=now(),mode=model.modeId||'3';
-   const history=body.messages;
-   const message=history.length===1&&history[0].role==='user'?history[0].content:JSON.stringify(history);
+   const turn=createToolTurn(body);
+   const message=turn.prompt;
    const block={block_type:10000,content:{text_block:{text:message,icon_url:'',icon_url_dark:'',summary:''},pc_event_block:''},
     block_id:randomUUID(),parent_id:'',meta_info:[],append_fields:[]};
    const option={create_time_ms:at,need_create_conversation:true,conversation_init_option:{need_ack_conversation:true},
@@ -261,7 +262,8 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
    const payload={client_meta:{local_conversation_id:'local_'+local,conversation_id:'',bot_id:bot,last_section_id:'',last_message_index:null},
     messages:[{local_message_id:id,content_block:[block],message_status:0}],option,user_context:[],ext};
    const response=await request(s,'chat',payload,{signal});
-   yield* decodeEvents(response,{signal});
+   const deltas=decodeEvents(response,{signal});
+   yield* (turn.active ? toolDeltas(deltas,turn) : deltas);
   },
   close(){catalogs.clear();},
  };

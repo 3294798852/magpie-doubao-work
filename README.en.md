@@ -77,7 +77,9 @@ Check accounts and models on Magpie's provider page. The standalone gateway and 
 
 The plugin serves OpenAI-style text `chat/completions`, streaming and non-streaming responses, and upstream `reasoning_content`. Cancellation aborts the upstream request. Streaming follows consumer backpressure.
 
-Tool calls, structured output, images and workflows remain pending. Context and output limits also need upstream metadata. Live account login, model requests and reward claims require validation by an account holder.
+Version 0.6.0 supports client-side function tools with `auto`, `none`, `required`, named selection, parallel control and tool-result continuation. Both editions share protocol conversion and response encoding. Tool-only replies finish with `tool_calls`. The client executes tools, and tool requests are emitted after the complete response has been checked. See the [investigation and repair plan](docs/tool-calling.md).
+
+Constrained decoding with `strict=true`, custom grammar tools, structured output, images and workflows remain pending. Context and output limits also need upstream metadata.
 
 To verify a source checkout, use Node.js 22 or newer and run the following commands.
 

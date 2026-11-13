@@ -63,7 +63,7 @@ test('Magpie 包入口、供应商配置与真实模型能力',async () => {
   const r = runtime(); await r.login();
   const models = await r.plugin.provider.models({},{auth:r.auths.get('A')});
   assert.deepEqual(Object.keys(models),['fixture-model']);
-  assert.equal(models['fixture-model'].capabilities.toolcall,false);
+  assert.equal(models['fixture-model'].capabilities.toolcall,true);
   assert.equal(models['fixture-model'].capabilities.input.image,false);
   assert.equal(models['fixture-model'].api.id,'fixture-model');
 });
@@ -151,8 +151,30 @@ test('非流式文本与推理共用响应编码器，保留角色和文本分�
   assert.deepEqual(received.body.messages,[{role:'system',content:'简洁回答'},{role:'user',content:'问候'}]);
   assert.equal(received.session.cookieHeader,'sessionid=alpha');
   assert(!JSON.stringify(value).includes('sessionid'));
-  assert.equal((await r.ask('A',{tools:[]})).status,400);
+  assert.equal((await r.ask('A',{tools:[]})).status,200);
   assert.equal((await r.ask('A',{messages:[{role:'user',content:[{type:'image_url',image_url:{url:'https://example.test'}}]}]})).status,400);
+});
+
+test('Magpie 纯工具回复和工具结果回传使用完整消息与结束原因',async()=>{
+  const tool={type:'function',function:{name:'lookup',parameters:{type:'object'}}};
+  const call={index:0,id:'call_fixture',type:'function',function:{name:'lookup',arguments:'{}'}};
+  const r=runtime({async *chat(_session,body){
+    assert.deepEqual(body.tools,[tool]);
+    const last=body.messages.at(-1);
+    if(last.role==='tool'){
+      assert.equal(last.tool_call_id,call.id);yield {content:last.content};
+    }else yield {tool_calls:[call]};
+  }});
+  await r.login();
+  const first=await (await r.ask('A',{tools:[tool]})).json();
+  assert.equal(first.choices[0].finish_reason,'tool_calls');
+  assert.equal(first.choices[0].message.content,null);
+  assert.equal(first.choices[0].message.tool_calls[0].id,call.id);
+  const next=await r.ask('A',{tools:[tool],stream:true,messages:[...messages,
+    first.choices[0].message,{role:'tool',tool_call_id:call.id,content:'client-result'}]});
+  assert.equal(next.status,200);
+  const text=await next.text();
+  assert.match(text,/client-result/);assert.match(text,/"finish_reason":"stop"/);assert.match(text,/\[DONE\]/);
 });
 
 test('流式文本、推理与正式结束标记；断流输出错误事件',async () => {
