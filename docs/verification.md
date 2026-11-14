@@ -16,13 +16,16 @@ The plugin uses the gateway v0.5.0 implementation. The extraction keeps native p
 
 | 环境 | 方法 | 结果 |
 | --- | --- | --- |
-| Windows 11，Node.js 24.18.0 | 语法检查，64 项完整回归，受影响模块补验 | 语法通过，64 项通过，补验 17 项和 7 项通过 |
-| Windows，Bun 1.4.4，0.6.2 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模型名称、验证状态恢复、短答快照、用量、工具回合、设备保存、额度、签到和账号隔离通过 |
+| Windows 11，Node.js 24.18.0 | 语法检查，71 项完整基线及受影响模块补验 | 语法、基线与后续 14 项和 26 项补验通过 |
+| Windows / Ubuntu / macOS，Node.js 22 / 24 | 0.6.3 当前 73 项完整回归 | 六个 CI 任务全部通过 |
+| Windows，Bun 1.4.4，0.6.3 | 真实 Magpie `internal/plugin/host.js` 加载从 GitHub 安装的插件 | Web 会话聊天与重启、模型名称、验证恢复、短答、工具回合、额度、签到和账号隔离通过 |
 | 中英文搜索字段 | `test/metadata.test.mjs` | 34 个检索词或词组在 zh/en 两种语言中均匹配，共 68 项匹配检查 |
 
 宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。宿主回归使用合成账号，真实账号结果记录如下。
 
 The host regression uses synthetic accounts. Live Windows and isolated Linux account results follow.
+
+本机已定向安装 0.6.3，正在运行的 Magpie 正常 HTTP 入口返回 200、完整 `OK` 与 `stop`。旧社区豆包插件保持停用。[0.6.3 插件 CI](https://github.com/3294798852/magpie-doubao-work/actions/runs/43562430545)
 
 ## 0.6.2 模型名称与验证恢复
 

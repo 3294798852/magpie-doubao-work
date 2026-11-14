@@ -464,6 +464,105 @@
       "gateway": 121
     },
     "remoteOriginalAccount": "Unavailable; release follow-up is pending",
-    "transport": "Windows test processes use a process-local resolver. WSL uses a temporary CONNECT proxy for EAI_AGAIN. TLS certificates remain validated."
+    "transport": "Windows test processes use a process-local resolver. WSL uses a temporary CONNECT proxy for EAI_AGAIN. TLS certificates remain validated.",
+    "ci": [
+      {
+        "repository": "magpie-doubao-work",
+        "commit": "0f56d81340f0bdfd0199dc1cd0b98c870a07b15e",
+        "id": 43562430545,
+        "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43562430545",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "name": "Tests (windows-2025, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (windows-2025, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (macos-15, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (macos-15, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "repository": "doubao-work-gateway",
+        "commit": "95a472f57549c40e43ff181d1536c7b62e588130",
+        "id": 43562453867,
+        "url": "https://github.com/3294798852/doubao-work-gateway/actions/runs/43562453867",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "name": "Tests (macos-15, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (windows-2025, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (windows-2025, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (macos-15, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "installed": {
+      "version": "0.6.3",
+      "spec": "github:3294798852/magpie-doubao-work",
+      "enabled": true,
+      "legacyDisabled": true,
+      "update": [
+        "+ magpie-doubao-work@github:3294798852/magpie-doubao-work#0f56d81",
+        "1 package installed [2.07s]"
+      ]
+    },
+    "localMagpie": {
+      "version": "0.6.3",
+      "status": 200,
+      "text": "OK",
+      "finish": "stop",
+      "passed": true
+    }
   }
 }
