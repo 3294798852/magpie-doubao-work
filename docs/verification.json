@@ -82,7 +82,34 @@
   },
   "codeCommit": "8219662479e4faae7a6feee915f5dffeb6fcbb0c",
   "ci": {
-    "status": "pending"
+    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43553147362",
+    "codeCommit": "c35c1441a1c626f7f445f550a3606cd8f98bed56",
+    "jobs": [
+      {
+        "name": "Tests (macos-15, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (macos-15, Node 24)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (windows-2025, Node 24)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (windows-2025, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (ubuntu-24.04, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (ubuntu-24.04, Node 24)",
+        "conclusion": "success"
+      }
+    ]
   },
   "githubInstall": {
     "specifier": "github:3294798852/magpie-doubao-work",
@@ -351,6 +378,20 @@
     },
     "hostSmoke": true,
     "gatewayTestsPassed": 110,
-    "remoteInitialVerificationTrigger": "Raw request and response are unavailable"
+    "remoteInitialVerificationTrigger": "Raw request and response are unavailable",
+    "ci": [
+      {
+        "repository": "magpie-doubao-work",
+        "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43553147362",
+        "commit": "c35c1441a1c626f7f445f550a3606cd8f98bed56",
+        "jobsPassed": 6
+      },
+      {
+        "repository": "doubao-work-gateway",
+        "url": "https://github.com/3294798852/doubao-work-gateway/actions/runs/43553236472",
+        "commit": "ea03ddd7440c95f35aaa31008cc953a2c368dea5",
+        "jobsPassed": 6
+      }
+    ]
   }
 }

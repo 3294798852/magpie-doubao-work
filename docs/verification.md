@@ -98,6 +98,8 @@ Both localized summaries contain the tested Chinese and English aliases. The reg
 
 [CI](https://github.com/3294798852/magpie-doubao-work/actions/workflows/ci.yml) 在 Windows、Ubuntu、macOS 上分别使用 Node.js 22 和 24 运行语法与测试检查。发行验收数据保存在 [verification.json](verification.json)。
 
+[0.6.2 运行 43553147362](https://github.com/3294798852/magpie-doubao-work/actions/runs/43553147362) 的全部 6 个任务通过，代码提交为 `c35c1441a1c626f7f445f550a3606cd8f98bed56`。
+
 [0.6.1 运行 43412890988](https://github.com/3294798852/magpie-doubao-work/actions/runs/43412890988) 的全部 6 个任务通过，代码提交为 `1227efc4e2c553b94647902bbe8e7104a16f1420`。本机实际 Magpie 网关已通过流式与非流式短答。
 
 [0.6.0 运行 43409547828](https://github.com/3294798852/magpie-doubao-work/actions/runs/43409547828) 的全部 6 个任务通过，验证代码提交为 `8219662479e4faae7a6feee915f5dffeb6fcbb0c`。0.5.0 的 GitHub 安装基线记录保留在 `verification.json`。

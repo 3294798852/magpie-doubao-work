@@ -42,9 +42,11 @@ Magpie 的模型按钮优先读取模型名称，接口 ID 单独保存在模型
 | 0.6.2 插件 | HTTP 200，完整文本 `OK` | 1 | ready |
 | 0.6.2 网关正常 HTTP | HTTP 200，完整文本 `好` | 1 | ready |
 
-本机系统 DNS 当时返回 `EAI_MEMORY`。本次联网验证与发布进程使用独立 DNS 解析，HTTPS 继续执行证书校验。发布的软件使用既有网络请求入口。
+本机系统 DNS 当时返回 `EAI_MEMORY`。本次联网验证与发布进程使用独立 DNS 解析，HTTPS 执行证书校验。独立解析属于本次验证与发布工具配置。
 
 真实 Magpie Bun 1.4.4 宿主通过模型显示名称、旧状态恢复、账号隔离、工具回合及既有短答联调。回归覆盖重复真实验证、官网验证后原会话恢复、并发状态更新、断流、自动签到以及正常 HTTP 和面板复测入口。
+
+插件 64 项、网关 110 项本地测试通过，受影响模块补验通过。两仓库的 Windows / Ubuntu / macOS × Node.js 22 / 24 共 12 个 CI 任务全部通过。[插件 CI](https://github.com/3294798852/magpie-doubao-work/actions/runs/43553147362) · [网关 CI](https://github.com/3294798852/doubao-work-gateway/actions/runs/43553236472)
 
 ## English
 
