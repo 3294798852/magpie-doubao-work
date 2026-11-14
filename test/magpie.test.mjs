@@ -191,7 +191,7 @@ test('流式文本、推理与正式结束标记；断流输出错误事件',asy
   assert.match(bad,/event: error/); assert(!bad.includes('[DONE]')); assert(!bad.includes('PRIVATE_RAW'));
 });
 
-test('验证错误持久暂停实际账号，宿主重启与额度查询均保留暂停',async () => {
+test('验证状态跨重启保存，每个新聊天重新取得上游结果，额度查询保留状态',async () => {
   const calls = [];
   const r = runtime({async *chat(session) { calls.push(session.cookieHeader); throw {upstream_code:710022004}; }});
   await r.login('A','alpha'); await r.login('B','bravo');
@@ -206,7 +206,58 @@ test('验证错误持久暂停实际账号，宿主重启与额度查询均保�
   assert.equal(usage.windows[0].used,25);
   assert.equal(r.auths.get('A').doubao.state,'needs_verification');
   assert.equal((await r.ask('A')).status,429);
-  assert.deepEqual(calls,['sessionid=alpha']);
+  assert.deepEqual(calls,['sessionid=alpha','sessionid=alpha']);
+});
+
+test('Magpie 模型菜单和 models API 使用上游名称，数字 ID 继续用于调用',async()=>{
+  const r=runtime({modelDetails:async()=>({'5':{name:'豆包 2.1 Pro'},'9':{name:'自动'}}),
+    async *chat(_session,body){assert.equal(body.model,'5');yield {content:'model-five'};}});
+  await r.login();
+  const models=await r.plugin.provider.models({},{auth:r.auths.get('A')});
+  assert.equal(models['5'].name,'豆包 2.1 Pro');assert.equal(models['9'].name,'自动');
+  assert.equal(models['5'].api.id,'5');assert.equal(models['9'].api.id,'9');
+  const loader=await r.run('A',getAuth=>r.plugin.auth.loader(getAuth));
+  const list=await (await loader.fetch('https://www.doubao.com/v1/models')).json();
+  assert.deepEqual(list.data.map(({id,name})=>({id,name})),[{id:'5',name:'豆包 2.1 Pro'},{id:'9',name:'自动'}]);
+  assert.equal((await (await r.ask('A',{model:'5'})).json()).choices[0].message.content,'model-five');
+});
+
+test('官网验证后原会话的新聊天成功即可恢复，签到记录和其他账号保留',async()=>{
+  let verified=false,calls=0;
+  const r=runtime({async *chat(){calls++;if(!verified)throw {upstream_code:710022004};yield {content:'recovered'};}});
+  await r.login('A');await r.login('B','bravo');
+  const attempt={day:'2026-11-14',reserved:true,status:'pending'};
+  r.auths.get('A').doubao.attempt=attempt;
+  assert.equal((await r.ask('A')).status,429);
+  const refresh=r.auths.get('A').refresh;
+  r.restart();verified=true;
+  const response=await r.ask('A');
+  assert.equal(response.status,200);assert.equal((await response.json()).choices[0].message.content,'recovered');
+  assert.equal(calls,2);assert.equal(r.auths.get('A').refresh,refresh);
+  assert.equal(r.auths.get('A').doubao.state,'ready');assert.equal(r.auths.get('A').doubao.upstreamCode,0);
+  assert.deepEqual(r.auths.get('A').doubao.attempt,attempt);assert.equal(r.auths.get('B').doubao.state,'ready');
+});
+
+test('恢复中的聊天遇到断流保持验证状态，成功回合保留并发的新失败',async()=>{
+  const interrupted=runtime({async *chat(){yield {content:'partial'};throw Error('fixture disconnect');}});
+  await interrupted.login();interrupted.auths.get('A').doubao={state:'needs_verification',upstreamCode:710022004};
+  assert.equal((await interrupted.ask()).status,502);
+  assert.equal(interrupted.auths.get('A').doubao.state,'needs_verification');
+  const stop=new AbortController(),reason=Error('fixture cancellation');
+  const cancelled=runtime({async *chat(){yield {content:'partial'};stop.abort(reason);}});
+  await cancelled.login();cancelled.auths.get('A').doubao={state:'needs_verification'};
+  await assert.rejects(cancelled.ask('A',{}, {signal:stop.signal}),error=>error===reason);
+  assert.equal(cancelled.auths.get('A').doubao.state,'needs_verification');
+  let release;
+  const wait=new Promise(resolve=>{release=resolve;});
+  const r=runtime({async *chat(){yield {content:'first'};await wait;yield {content:'last'};},
+    quota:async()=>{throw {upstream_code:710022004};}});
+  await r.login();r.auths.get('A').doubao={state:'needs_verification',lastRequestId:'old'};
+  const response=await r.ask('A',{stream:true}),result=response.text();
+  await r.run('A',getAuth=>r.plugin.auth.usage(getAuth));
+  const failure=r.auths.get('A').doubao.lastRequestId;
+  release();assert.match(await result,/first/);
+  assert.equal(r.auths.get('A').doubao.state,'needs_verification');assert.equal(r.auths.get('A').doubao.lastRequestId,failure);
 });
 
 test('流中验证错误不输出成功结尾，登录失效告知 Magpie',async () => {

@@ -1,6 +1,6 @@
 # 独立插件验证记录 / Standalone plugin verification
 
-验证日期为 2026-11-13，当前版本为 0.6.1。
+验证日期为 2026-11-14，当前版本为 0.6.2。
 
 ## 来源与改动范围
 
@@ -12,13 +12,19 @@ The plugin uses the gateway v0.5.0 implementation. The extraction keeps native p
 
 | 环境 | 方法 | 结果 |
 | --- | --- | --- |
-| Windows 11，Node.js 24.18.0 | `npm run check`、`npm test` | 语法通过，60 项测试通过 |
-| Windows，Bun 1.4.4，0.6.1 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模拟上游的短答快照、用量、工具调用、结果回传、设备保存、模型、文本、流式、额度、签到和状态隔离通过 |
+| Windows 11，Node.js 24.18.0 | 语法检查，64 项完整回归，受影响模块补验 | 语法通过，64 项通过，补验 17 项和 7 项通过 |
+| Windows，Bun 1.4.4，0.6.2 | 真实 Magpie `internal/plugin/host.js` 加载独立插件 | 模型名称、验证状态恢复、短答快照、用量、工具回合、设备保存、额度、签到和账号隔离通过 |
 | 中英文搜索字段 | `test/metadata.test.mjs` | 34 个检索词或词组在 zh/en 两种语言中均匹配，共 68 项匹配检查 |
 
 宿主基线为 Magpie 提交 `11ab58c5874268d2607ff43f6ce13abb366c518b`。宿主回归使用合成账号，真实账号结果记录如下。
 
 The host regression uses synthetic accounts. Live Windows and isolated Linux account results follow.
+
+## 0.6.2 模型名称与验证恢复
+
+实时上游目录确认 `5` 为“豆包 2.1 Pro”、`9` 为“自动”，Magpie 元数据使用目录名称。真实账号的隔离副本设置旧待验证状态后，已安装的 0.6.1 在本地返回 429、上游调用 0 次；0.6.2 插件和网关分别调用上游 1 次，HTTP 200，并恢复 `ready`。[执行路径、实施方案与验收](model-names-verification.md)
+
+本机系统 DNS 返回 `EAI_MEMORY`，真实联调通过进程内独立解析完成。用户账号文件保持独立，试验的旧待验证状态为人工构造。
 
 ## 0.6.1 短回复与 SSE 输出
 

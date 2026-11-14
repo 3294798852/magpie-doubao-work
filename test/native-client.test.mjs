@@ -30,6 +30,21 @@ function mock(chat){
 }
 const msg={model:'fixture-model',messages:[{role:'user',content:'你好'}]};
 async function consume(g){const list=[];for await(const item of g)list.push(item);return list;}
+
+test('模型 ID 保持上游值，详情保留 Pro 与自动名称并复用目录缓存',async()=>{
+ let calls=0;
+ const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async raw=>{
+  calls++;
+  if(new URL(raw).pathname==='/alice/user/launch')return reply({data:{assistant_bot_id:'fixture-bot'}});
+  return reply({data:{entry_list:[{active_switch_conf:{menu_conf:{item_list:[
+   {model_item_key:'5',name:'豆包 2.1 Pro'},{model_item_key:'9',name:'自动'},
+  ]}}}]}});
+ }});
+ assert.deepEqual(await client.models(s),['5','9']);
+ const details=await client.modelDetails(s);
+ assert.equal(details['5'].name,'豆包 2.1 Pro');assert.equal(details['9'].name,'自动');
+ assert.equal(calls,2);
+});
 test('自有豆包适配器固定 HTTPS 目的地；保留身份字符串与 UTF-8 分片',async()=>{
  const {client,seen}=mock(()=>{
   const raw=Buffer.from(frame('CHUNK_DELTA',{text:'你好'})+frame('SSE_REPLY_END',{}));
@@ -47,8 +62,12 @@ test('上游 JSON、SSE 验证错误均保留代码，断流不被当成正常�
   ()=>reply({error_code:710022004,message:'COOKIE_SECRET'}),
   ()=>new Response(frame('SSE_REPLY_ERROR',{error:{code:710022004,message:'COOKIE_SECRET'}}),options),
  ]){
-  const {client}=mock(make);
-  await assert.rejects(consume(client.chat(s,msg)),e=>e.status===429&&e.upstream_code===710022004&&!e.message.includes('COOKIE_SECRET'));
+  for(const device of [undefined,'DEVICE_SECRET']){
+   const {client}=mock(make);
+   await assert.rejects(consume(client.chat({...s,deviceId:device},msg)),e=>e.status===429&&
+    e.upstream_code===710022004&&e.device_context===(device?'present':'missing')&&
+    (device||e.message.includes('设备上下文'))&&!e.message.includes('COOKIE_SECRET')&&!e.message.includes('DEVICE_SECRET'));
+  }
  }
  const {client}=mock(()=>new Response(frame('CHUNK_DELTA',{text:'part'}),options));
  await assert.rejects(consume(client.chat(s,msg)),/正式结束标记/);

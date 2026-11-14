@@ -22,14 +22,20 @@ const plain=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const clean=v=>str(v).replace(/[\x00-\x1f\x7f]/g,'').slice(0,100);
 const arr=v=>Array.isArray(v)?v:[];
 export const fail=(status,message)=>Object.assign(Error(message),{status});
-export function vendorError(status,v={}){
+function verificationContext(error,session){
+ if(error?.upstream_code!==710022004||!session)return error;
+ error.device_context=session.deviceId?'present':'missing';
+ if(!session.deviceId)error.message='豆包上游要求验证（710022004），当前账号缺少客户端设备上下文。请在安装并登录豆包客户端的设备上重新接入账号，或导入含设备上下文的账号备份后重试。';
+ return error;
+}
+export function vendorError(status,v={},session){
  let code=Number(upstreamCode(v));
  let decision=v?.extra?.decision??v?.decision;
  if(typeof decision==='string'&&decision.length<=65536)try{decision=JSON.parse(decision);}catch{decision=null;}
  if(decision?.type==='verify')code=710022004;
  const error=normalizeProviderError({code},{httpStatus:code===710012001?401:status});
  if(error.type==='upstream_rate_limited'&&Number.isFinite(v.retryAfterMs))error.retryAfterMs=v.retryAfterMs;
- return error;
+ return verificationContext(error,session);
 }
 function endpoint(route,s){
  const u=new URL(ROUTES[route],ORIGIN);
@@ -168,9 +174,9 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
  async function request(s,route,data,{signal}={}){
   const method=route==='identity'?'GET':'POST';
   const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(route==='chat'?600000:25000)]):AbortSignal.timeout(route==='chat'?600000:25000);
-  let response;
+  let response,session;
   try{
-   const session=route==='identity'?s:await withDeviceContext(s,readDevice);
+   session=route==='identity'?s:await withDeviceContext(s,readDevice);
    response=await fetchImpl(endpoint(route,session),{method,redirect:'error',signal:requestSignal,
     headers:{Cookie:s.cookieHeader,Origin:ORIGIN,Referer:ORIGIN+'/chat/','Agw-Js-Conv':'str',
      Accept:route==='chat'?'text/event-stream, application/json':'application/json','Content-Type':'application/json',
@@ -178,12 +184,12 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
   }catch{signal?.throwIfAborted();throw fail(502,'连接豆包工作失败。');}
   if(route==='chat'&&response.ok&&/^text\/event-stream(?:;|$)/i.test(response.headers.get('content-type')||''))return response;
   let value;
-  try{value=await limitedJson(response);}catch(error){if(!response.ok)throw vendorError(response.status,{});throw error;}
+  try{value=await limitedJson(response);}catch(error){if(!response.ok)throw vendorError(response.status,{},session);throw error;}
   const code=Number(upstreamCode(value)||0);
   if(!response.ok||code!==0||route==='chat'||value?.extra?.decision||value?.decision){
    const retry=response.headers.get('retry-after'),seconds=retry!==null?Number(retry):NaN;
    const delay=Number.isFinite(seconds)?seconds*1000:Date.parse(retry)-now();
-   const err=vendorError(response.status,{...value,retryAfterMs:delay});
+   const err=vendorError(response.status,{...value,retryAfterMs:delay},session);
    if(!response.ok||code!==0||route==='chat'||err.state)throw err;
   }
   return value;
@@ -211,6 +217,7 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
    return {identity:user+':'+(str(d.passport_enterprise_user_type)||'0'),name:clean(d.name)||'豆包工作账号'};
   },
   async models(s,opts){return Object.keys((await catalog(s,opts)).models);},
+  async modelDetails(s,opts){return (await catalog(s,opts)).models;},
   async quota(s,opts){
    const overview=await request(s,'quota',{product_line:'membership'},opts);
    const entry=await request(s,'quotaName',{},opts).catch(e=>{if(e.state)throw e;return {};});
@@ -233,6 +240,7 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
    return {status:after?.checked?(err?'done':'claimed'):'pending'};
   },
   async *chat(s,body,{signal}={}){
+   s=await withDeviceContext(s,readDevice);
    const {bot,models}=await catalog(s,{signal});
    const model=Object.hasOwn(models,body.model)?models[body.model]:undefined;
    if(!model)throw fail(404,'此账号的豆包模型目录已变化。');
@@ -261,9 +269,13 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
    const local=Array.from(randomUUID().replaceAll('-','').slice(0,16),c=>parseInt(c,16)%10).join('');
    const payload={client_meta:{local_conversation_id:'local_'+local,conversation_id:'',bot_id:bot,last_section_id:'',last_message_index:null},
     messages:[{local_message_id:id,content_block:[block],message_status:0}],option,user_context:[],ext};
-   const response=await request(s,'chat',payload,{signal});
-   const deltas=decodeEvents(response,{signal});
-   yield* (turn.active ? toolDeltas(deltas,turn) : deltas);
+   try{
+    const response=await request(s,'chat',payload,{signal});
+    const deltas=decodeEvents(response,{signal});
+    yield* (turn.active ? toolDeltas(deltas,turn) : deltas);
+   }catch(error){
+    throw verificationContext(error,s);
+   }
   },
   close(){catalogs.clear();},
  };

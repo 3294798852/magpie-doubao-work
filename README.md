@@ -60,7 +60,7 @@ magpie accounts import doubaowork /absolute/path/doubao-accounts.json --yes
 
 Windows 网关导出到隔离 Ubuntu 的真实账号迁移已通过，Ubuntu 网关和 Magpie Bun 宿主均返回 `OK`。迁移目标使用独立用户目录，网关的本机设备查询次数为零。详细范围见[验证记录](docs/verification.md)。
 
-官网和客户端正常、网关持续返回 `710022004` 时，检查插件版本和设备参数。修复参数后，已暂停账号需重新登录恢复。上游继续要求人工验证时，使用同一个账号在豆包官网完成验证，再在 Magpie 重新登录。
+`710022004` 表示上游要求人工验证。使用同一个账号在豆包官网或客户端完成验证后，直接重新测试模型或发送新请求。0.6.2 会依据完整成功回复清除旧验证状态。错误里的 `device_context=missing` 提示账号需要补齐设备上下文，可在已登录豆包客户端的设备上重新接入，或导入完整账号备份。[模型名称与验证状态说明](docs/model-names-verification.md)
 
 ## 从网关内置插件迁移
 

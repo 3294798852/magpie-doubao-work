@@ -2,6 +2,12 @@ import {normalizeProviderError} from './protocol.mjs';
 export function routable(account,now=Date.now()){
  return account?.enabled===true&&(account.state==='ready'||account.state==='rate_limited'&&Number.isFinite(account.retryAt)&&account.retryAt<=now);
 }
+export function chatRoutable(account,now=Date.now()){
+ return routable(account,now)||account?.enabled===true&&account.state==='needs_verification';
+}
+export function onChatSuccess(account){
+ return {...account,state:'ready',upstreamCode:0,failureType:'',retryAt:0,verificationRestored:false};
+}
 export function onFailure(account,error,{now=Date.now(),requestId=''}={}){
  const normalized=normalizeProviderError(error,{httpStatus:error.status||502});
  const state=normalized.state||account.state;

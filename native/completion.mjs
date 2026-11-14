@@ -57,6 +57,7 @@ export function completionError(error, requestId) {
     message: known ? error.message : '豆包工作请求未完成，请检查网关及账号状态。',
     type: known ? error.type : 'upstream_error',
     ...(Number.isSafeInteger(code) ? {code, upstream_code: code} : {}),
+    ...(['present','missing'].includes(error?.device_context) ? {device_context:error.device_context} : {}),
     request_id: requestId,
   }}};
 }

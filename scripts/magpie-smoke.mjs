@@ -103,7 +103,8 @@ globalThis.fetch = async (url,options) => {
       user_id_str:request.headers.get('cookie').includes('alpha')?'111':'222',name:'Fixture'}});
     case '/alice/user/launch': return json({data:{assistant_bot_id:'fixture-bot',ug_campaign_info:{campaign_group_code:'pc_incentive_task_mvp_v3'}}});
     case '/alice/slot/action_bar_v3/brief_list': return json({data:{entry_list:[{active_switch_conf:{
-      menu_conf:{item_list:[{model_item_key:'fixture-model',name:'Fixture Model'}]}}}]}});
+      menu_conf:{item_list:[{model_item_key:'fixture-model',name:'Fixture Model'},
+        {model_item_key:'5',name:'豆包 2.1 Pro'},{model_item_key:'9',name:'自动'}]}}}]}});
     case '/alice/commerce/sale/subscription/overview/': return json({data:{member_info:{hasActiveSubscription:true},
       window_limit_section:{window_limit_groups:[{feature_group_name:'文本',window_limits:[{window_type:1,used_percent:25}]}]}}});
     case '/alice/commerce/sale/subscription/entry/config/': return json({data:{membership_display_name:'Fixture Plan'}});
@@ -149,6 +150,8 @@ globalThis.fetch = async (url,options) => {
   const providers = await host.rpc('providers');
   const model = providers[0].models.find(model => model.id === 'fixture-model');
   assert(model); assert.equal(model.image,false); assert.deepEqual(model.inputs,['text']); checks.push('model-discovery');
+  assert.equal(providers[0].models.find(model => model.id === '5').name,'豆包 2.1 Pro');
+  assert.equal(providers[0].models.find(model => model.id === '9').name,'自动'); checks.push('model-display-name');
   const plain = await ask(alpha);
   assert.equal(plain.status,200); assert.equal(JSON.parse(plain.text).choices[0].message.content,'宿主验证通过');
   assert.equal(JSON.parse(plain.text).usage.total_tokens,10); checks.push('short-sse-snapshot');
@@ -182,7 +185,9 @@ globalThis.fetch = async (url,options) => {
   checks.push('verification-error');
   await host.stop(); host = undefined;
   await init();
-  assert.equal((await ask(alpha)).status,429); assert.equal((await ask(bravo)).status,200);
+  assert.equal((await ask(alpha)).status,200); assert.equal((await ask(bravo)).status,200);
+  const recovered = JSON.parse(await readFile(authPath,'utf8'));
+  assert.equal(recovered[alpha].doubao.state,'ready'); checks.push('verification-recovery');
   checks.push('restart-account-isolation');
   console.log(JSON.stringify({platform:process.platform,package:project,checks,passed:true},null,2));
 } finally {

@@ -1,24 +1,30 @@
 {
-  "date": "2026-11-13",
-  "version": "0.6.1",
+  "date": "2026-11-14",
+  "version": "0.6.2",
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
   "local": {
     "os": "Windows 11",
     "node": "24.18.0",
     "syntax": "passed",
-    "testsPassed": 60,
-    "testsFailed": 0
+    "testsPassed": 64,
+    "testsFailed": 0,
+    "affectedRecheck": {
+      "magpie": 17,
+      "nativeClient": 7
+    }
   },
   "hostSmoke": {
     "bun": "1.4.4",
-    "version": "0.6.1",
+    "version": "0.6.2",
     "result": "passed",
     "upstream": "synthetic fixtures",
     "toolCalling": "passed",
     "toolResultContinuation": "passed",
     "shortSseSnapshot": "passed",
-    "tokenUsage": "passed"
+    "tokenUsage": "passed",
+    "modelDisplayNames": "passed",
+    "verificationRecovery": "passed"
   },
   "search": {
     "languages": [
@@ -76,34 +82,7 @@
   },
   "codeCommit": "8219662479e4faae7a6feee915f5dffeb6fcbb0c",
   "ci": {
-    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43412890988",
-    "codeCommit": "1227efc4e2c553b94647902bbe8e7104a16f1420",
-    "jobs": [
-      {
-        "name": "Tests (ubuntu-24.04, Node 24)",
-        "conclusion": "success"
-      },
-      {
-        "name": "Tests (windows-2025, Node 22)",
-        "conclusion": "success"
-      },
-      {
-        "name": "Tests (ubuntu-24.04, Node 22)",
-        "conclusion": "success"
-      },
-      {
-        "name": "Tests (macos-15, Node 22)",
-        "conclusion": "success"
-      },
-      {
-        "name": "Tests (macos-15, Node 24)",
-        "conclusion": "success"
-      },
-      {
-        "name": "Tests (windows-2025, Node 24)",
-        "conclusion": "success"
-      }
-    ]
+    "status": "pending"
   },
   "githubInstall": {
     "specifier": "github:3294798852/magpie-doubao-work",
@@ -301,5 +280,77 @@
         "passed": true
       }
     ]
+  },
+  "ciBaseline": {
+    "version": "0.6.1",
+    "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/43412890988",
+    "codeCommit": "1227efc4e2c553b94647902bbe8e7104a16f1420",
+    "jobs": [
+      {
+        "name": "Tests (ubuntu-24.04, Node 24)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (windows-2025, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (ubuntu-24.04, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (macos-15, Node 22)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (macos-15, Node 24)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Tests (windows-2025, Node 24)",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "modelNamesAndVerification": {
+    "models": [
+      {
+        "id": "5",
+        "name": "豆包 2.1 Pro",
+        "modeName": "工作任务"
+      },
+      {
+        "id": "9",
+        "name": "自动",
+        "modeName": "工作任务"
+      }
+    ],
+    "live": {
+      "setup": "Copied account in memory with a simulated legacy verification state; user account files are unchanged",
+      "oldPlugin": {
+        "status": 429,
+        "code": 710022004,
+        "type": "account_verification_required",
+        "state": "needs_verification",
+        "upstreamChatCalls": 0
+      },
+      "newPlugin": {
+        "status": 200,
+        "text": "OK",
+        "state": "ready",
+        "upstreamChatCalls": 1
+      },
+      "gateway": {
+        "status": 200,
+        "text": "好",
+        "state": "ready",
+        "upstreamChatCalls": 1
+      },
+      "passed": true,
+      "transport": "Process-local DNS resolver, ordinary HTTPS with certificate validation"
+    },
+    "hostSmoke": true,
+    "gatewayTestsPassed": 110,
+    "remoteInitialVerificationTrigger": "Raw request and response are unavailable"
   }
 }

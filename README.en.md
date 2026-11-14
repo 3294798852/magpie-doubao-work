@@ -60,7 +60,7 @@ The `DoubaoWork` product directory is also supported at these locations. Headles
 
 A live Windows-to-isolated-Ubuntu migration passed for both the gateway and the Magpie Bun host, returning `OK`. The destination used a separate home directory, and the gateway performed zero local-device lookups. See the [verification record](docs/verification.md) for scope.
 
-If the website and desktop client work while the gateway returns `710022004`, check the plugin version and device context. Sign in again to restore an account paused before the fix. If official verification is still requested, complete it on Doubao's website with the same account, then sign in again in Magpie.
+For `710022004`, complete the official verification with the same account, then test the model or send a new request. Version 0.6.2 clears the stale verification state after a complete successful reply. A `device_context=missing` error calls for signing in on a device with the logged-in Doubao client or importing a complete account backup. See the [model names and verification-state repair](docs/model-names-verification.md).
 
 ## Move from the gateway's bundled plugin
 

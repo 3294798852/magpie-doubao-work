@@ -4,7 +4,7 @@ import {createDoubaoClient} from '../native/doubao-client.mjs';
 import {normalizeSession,backupRows,withDeviceContext} from '../native/session.mjs';
 import {readDesktopDeviceId} from '../native/desktop-device.mjs';
 import {normalizeProviderError} from '../native/protocol.mjs';
-import {onFailure,routable} from '../native/account-state.mjs';
+import {onFailure,routable,chatRoutable,onChatSuccess} from '../native/account-state.mjs';
 import {parseChat} from '../native/completion.mjs';
 import {browserSignIn} from './login.mjs';
 import {chatResponse,errorResponse} from './response.mjs';
@@ -30,14 +30,14 @@ function ready(auth,now) {
   const error = normalizeProviderError(state === 'needs_verification' ? {code:710022004} : {},
     {httpStatus:state === 'needs_login' ? 401 : 429});
   if (state === 'needs_verification')
-    error.message = '此账号已暂停。请在豆包官网完成验证，再在 Magpie 重新登录此账号。';
+    error.message = '此账号上次请求需要验证，自动签到已暂停。请在豆包官网或客户端完成验证后重新测试模型。';
   if (state === 'needs_login') error.signIn = 'expired';
   error.retryAt = auth.doubao?.retryAt;
   throw error;
 }
 
-function describeModel(id) {
-  return {id,providerID:ID,name:id,api:{id,url:API,npm:NPM},temperature:false,
+function describeModel(id,name = id) {
+  return {id,providerID:ID,name,api:{id,url:API,npm:NPM},temperature:false,
     capabilities:{temperature:false,reasoning:false,attachment:false,toolcall:true,
       input:{text:true,image:false,audio:false,video:false,pdf:false},
       output:{text:true,image:false,audio:false,video:false,pdf:false}},
@@ -49,6 +49,15 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
   const updates = new Map(), active = new Set();
   const today = () => dayTime(new Date(now())).day;
   const tomorrow = () => new Date(Date.parse(today()+'T00:00:00+08:00')+86400000).toISOString();
+
+  async function modelsFor(session,options) {
+    if (doubao.modelDetails) {
+      const models = await doubao.modelDetails(session,options);
+      return Object.fromEntries(Object.entries(models).map(([id,model]) => [id,describeModel(id,model.name)]));
+    }
+    const ids = await doubao.models(session,options);
+    return Object.fromEntries(ids.map(id => [id,describeModel(id)]));
+  }
 
   async function updateAuth(auth,getAuth,change) {
     const previous = updates.get(auth.uid) || Promise.resolve();
@@ -67,7 +76,10 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
   }
 
   function updateState(auth,getAuth,change) {
-    return updateAuth(auth,getAuth,current => ({...current,doubao:change(current.doubao || freshState())}));
+    return updateAuth(auth,getAuth,current => {
+      const previous = current.doubao || freshState(), next = change(previous);
+      return next === previous ? current : {...current,doubao:next};
+    });
   }
 
   async function sessionFor(getAuth) {
@@ -105,7 +117,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
 
   async function* chat(getAuth,body,{signal,requestId}) {
     const {auth,session} = await sessionFor(getAuth);
-    ready(auth,now());
+    if (!chatRoutable({...auth.doubao,enabled:true,state:auth.doubao?.state || 'ready'},now())) ready(auth,now());
     const leave = enter(auth);
     let produced = false;
     try {
@@ -114,7 +126,11 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
         if (delta.content || delta.tool_calls?.length) produced = true;
         yield delta;
       }
+      signal?.throwIfAborted();
       if (!produced) throw fail(502,'豆包工作未返回文本或工具调用。','upstream_empty_response');
+      if (auth.doubao?.state === 'needs_verification' || auth.doubao?.verificationRestored)
+        await updateState(auth,getAuth,state => state.state === auth.doubao.state &&
+          state.lastRequestId === auth.doubao.lastRequestId ? onChatSuccess(state) : state);
     } catch (error) {
       signal?.throwIfAborted();
       throw await failed(auth,getAuth,error,requestId);
@@ -130,8 +146,8 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
       if (target.origin !== 'https://www.doubao.com') throw fail(400,'豆包插件接口地址有误。');
       if (request.method === 'GET' && target.pathname === '/v1/models') {
         const {session} = await sessionFor(getAuth);
-        const ids = await doubao.models(session,{signal:request.signal});
-        return Response.json({object:'list',data:ids.map(id => ({id,object:'model',owned_by:ID}))});
+        const models = await modelsFor(session,{signal:request.signal});
+        return Response.json({object:'list',data:Object.values(models).map(({id,name}) => ({id,name,object:'model',owned_by:ID}))});
       }
       if (request.method !== 'POST' || target.pathname !== '/v1/chat/completions')
         throw fail(404,'豆包插件仅提供 models 和 chat/completions。');
@@ -160,8 +176,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
         if (!auth) return {};
         try {
           const session = await withDeviceContext(sessionOf(auth),readDevice);
-          const ids = await doubao.models(session,{signal});
-          return Object.fromEntries(ids.map(id => [id,describeModel(id)]));
+          return await modelsFor(session,{signal});
         } catch (error) {
           if (error?.state === 'needs_login') error.signIn = 'expired';
           throw error;
