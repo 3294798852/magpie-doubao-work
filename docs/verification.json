@@ -392,6 +392,26 @@
         "commit": "ea03ddd7440c95f35aaa31008cc953a2c368dea5",
         "jobsPassed": 6
       }
-    ]
+    ],
+    "installedVersion": "0.6.2",
+    "runningLocalGateway": {
+      "date": "2026-11-14",
+      "model": "doubaowork/person-deepseek-v4-1-flash-261017",
+      "entry": "Running local Magpie HTTP gateway",
+      "status": 200,
+      "text": "OK",
+      "finish": "stop",
+      "models": [
+        {
+          "id": "5",
+          "name": "豆包 2.1 Pro"
+        },
+        {
+          "id": "9",
+          "name": "自动"
+        }
+      ],
+      "passed": true
+    }
   }
 }
