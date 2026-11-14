@@ -12,8 +12,8 @@ export async function browserSignIn(signIn, {signal, browserOptions = {}} = {}) 
   try {
     await securePrivate(root,{directory:true});
     login = new BrowserLogin({...browserOptions, tmpRoot:root,
-      async importAccount(cookies) {
-        result = await signIn({cookies},{signal});
+      async importAccount(cookies,_context,metadata) {
+        result = await signIn({cookies,...metadata,clientProfile:'web'},{signal});
         return {name:result.name,updated:false};
       },
     });

@@ -6,14 +6,14 @@ test('710022004 与额度、普通限流分开，错误不回显上游凭据',()
  assert.equal(error.type,'account_verification_required');assert.equal(error.upstream_code,710022004);assert.equal(error.retryable,false);assert.equal(error.status,429);assert(!error.message.includes('COOKIE_SECRET'));
 });
 
-import {createDoubaoClient} from '../native/doubao-client.mjs';
+import {createDoubaoClient,vendorError} from '../native/doubao-client.mjs';
 const s={cookieHeader:'sessionid=fixture-only'};
 const frame=(event,v)=>'event: '+event+'\r\ndata: '+JSON.stringify(v)+'\r\n\r\n';
 const meta={data:{entry_list:[{active_switch_conf:{menu_conf:{item_list:[{model_item_key:'fixture-model',name:'Fixture Model'}]}}}]}};
 const reply=v=>new Response(JSON.stringify(v),{headers:{'Content-Type':'application/json'}});
 function mock(chat){
  const seen=[];
- return {seen,client:createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async(raw,options)=>{
+ return {seen,client:createDoubaoClient({readDevice:async()=> 'fixture-device',fetchImpl:async(raw,options)=>{
   const u=new URL(raw);assert.equal(u.origin,'https://www.doubao.com');
   assert.equal(options.redirect,'error');assert.equal(options.headers.Cookie,s.cookieHeader);
   seen.push(u.pathname);
@@ -33,7 +33,7 @@ async function consume(g){const list=[];for await(const item of g)list.push(item
 
 test('模型 ID 保持上游值，详情保留 Pro 与自动名称并复用目录缓存',async()=>{
  let calls=0;
- const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async raw=>{
+ const client=createDoubaoClient({readDevice:async()=> 'fixture-device',fetchImpl:async raw=>{
   calls++;
   if(new URL(raw).pathname==='/alice/user/launch')return reply({data:{assistant_bot_id:'fixture-bot'}});
   return reply({data:{entry_list:[{active_switch_conf:{menu_conf:{item_list:[
@@ -62,19 +62,17 @@ test('上游 JSON、SSE 验证错误均保留代码，断流不被当成正常�
   ()=>reply({error_code:710022004,message:'COOKIE_SECRET'}),
   ()=>new Response(frame('SSE_REPLY_ERROR',{error:{code:710022004,message:'COOKIE_SECRET'}}),options),
  ]){
-  for(const device of [undefined,'DEVICE_SECRET']){
-   const {client}=mock(make);
-   await assert.rejects(consume(client.chat({...s,deviceId:device},msg)),e=>e.status===429&&
-    e.upstream_code===710022004&&e.device_context===(device?'present':'missing')&&
-    (device||e.message.includes('设备上下文'))&&!e.message.includes('COOKIE_SECRET')&&!e.message.includes('DEVICE_SECRET'));
-  }
+  const {client}=mock(make);
+  await assert.rejects(consume(client.chat({...s,deviceId:'DEVICE_SECRET'},msg)),e=>e.status===429&&
+   e.upstream_code===710022004&&e.device_context==='present'&&
+   !e.message.includes('COOKIE_SECRET')&&!e.message.includes('DEVICE_SECRET'));
  }
  const {client}=mock(()=>new Response(frame('CHUNK_DELTA',{text:'part'}),options));
  await assert.rejects(consume(client.chat(s,msg)),/正式结束标记/);
 });
 
 test('额度字段向 Magpie 保留未知百分比与免限状态',async()=>{
- const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async raw=>{
+ const client=createDoubaoClient({readDevice:async()=> 'fixture-device',fetchImpl:async raw=>{
   if(new URL(raw).pathname.endsWith('/entry/config/'))return reply({data:{membership_display_name:'Fixture'}});
   return reply({data:{member_info:{hasActiveSubscription:true},window_limit_section:{window_limit_groups:[{
    feature_group_name:'文本',window_limits:[
@@ -119,12 +117,9 @@ test('聊天请求保留账号设备优先级，并让 device_id 与 fp 使用�
  }
 });
 
-test('未找到桌面设备时保留原会话的指纹参数',async()=>{
- const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async raw=>{
-  const url=new URL(raw);
-  assert.equal(url.searchParams.has('device_id'),false);
-  assert.equal(url.searchParams.get('fp'),'web-fingerprint');
-  return url.pathname==='/alice/user/launch'?reply({data:{assistant_bot_id:'fixture-bot'}}):reply(meta);
- }});
- assert.deepEqual(await client.models({...s,fingerprint:'web-fingerprint'}),['fixture-model']);
+test('缺少设备的上游验证诊断保留错误代码且不要求安装桌面客户端',()=>{
+ const error=vendorError(200,{code:710022004},s);
+ assert.equal(error.upstream_code,710022004);
+ assert.equal(error.device_context,'missing');
+ assert.match(error.message,/升级/);
 });

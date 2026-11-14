@@ -2,6 +2,12 @@ import {readFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 
+export function deviceId(value) {
+  const text = typeof value === 'string' ? value.trim()
+    : Number.isSafeInteger(value) ? String(value) : '';
+  return text !== '0' && /^[A-Za-z0-9_-]{1,64}$/.test(text) ? text : undefined;
+}
+
 export function desktopStatePaths(platform,home,env) {
   const names = ['Doubao','DoubaoWork'];
   if (platform === 'win32') {
@@ -24,10 +30,8 @@ export function createDesktopDeviceReader({platform = process.platform,home = ho
     for (const file of paths) {
       try {
         const data = JSON.parse(await read(file,'utf8'));
-        const value = data.aha?.device?.device_id;
-        const device = typeof value === 'string' ? value.trim()
-          : Number.isSafeInteger(value) ? String(value) : '';
-        if (/^[A-Za-z0-9_-]{1,64}$/.test(device)) return device;
+        const device = deviceId(data.aha?.device?.device_id);
+        if (device) return device;
       } catch {
         // The client can be absent or updating its local metadata.
       }

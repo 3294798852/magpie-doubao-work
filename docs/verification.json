@@ -1,22 +1,23 @@
 {
   "date": "2026-11-14",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
   "local": {
     "os": "Windows 11",
     "node": "24.18.0",
     "syntax": "passed",
-    "testsPassed": 64,
+    "testsPassed": 71,
     "testsFailed": 0,
     "affectedRecheck": {
-      "magpie": 17,
-      "nativeClient": 7
-    }
+      "nativeClientAndDevice": 14,
+      "magpieAndDevice": 26
+    },
+    "fullSuiteBaseline": "0.6.3 implementation before two additional focused regression cases"
   },
   "hostSmoke": {
     "bun": "1.4.4",
-    "version": "0.6.2",
+    "version": "0.6.3",
     "result": "passed",
     "upstream": "synthetic fixtures",
     "toolCalling": "passed",
@@ -24,7 +25,9 @@
     "shortSseSnapshot": "passed",
     "tokenUsage": "passed",
     "modelDisplayNames": "passed",
-    "verificationRecovery": "passed"
+    "verificationRecovery": "passed",
+    "webContextChat": "passed",
+    "webContextRestart": "passed"
   },
   "search": {
     "languages": [
@@ -413,5 +416,54 @@
       ],
       "passed": true
     }
+  },
+  "automaticWebContext": {
+    "version": "0.6.3",
+    "date": "2026-11-14",
+    "live": {
+      "plugin": {
+        "status": 200,
+        "text": "OK",
+        "finish": "stop",
+        "state": "ready",
+        "bootstraps": 1
+      },
+      "gateway": {
+        "status": 200,
+        "content": true,
+        "done": true,
+        "sourceBootstraps": 1,
+        "targetBootstraps": 0
+      },
+      "nativeDeviceReads": 0,
+      "passed": true
+    },
+    "windowsToIsolatedUbuntu": {
+      "os": "linux",
+      "runtime": "Bun 1.4.4",
+      "profile": "web",
+      "gateway": {
+        "status": 200,
+        "text": "OK",
+        "deviceContextPreserved": true,
+        "destinationDeviceLookups": 0
+      },
+      "plugin": {
+        "host": "Magpie Bun host",
+        "status": 200,
+        "text": "OK",
+        "done": true,
+        "deviceContextPreserved": true,
+        "isolatedHome": true
+      },
+      "passed": true
+    },
+    "gatewayLocalTestsPassed": 119,
+    "currentTestCounts": {
+      "plugin": 73,
+      "gateway": 121
+    },
+    "remoteOriginalAccount": "Unavailable; release follow-up is pending",
+    "transport": "Windows test processes use a process-local resolver. WSL uses a temporary CONNECT proxy for EAI_AGAIN. TLS certificates remain validated."
   }
 }

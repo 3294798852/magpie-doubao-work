@@ -48,19 +48,11 @@ Magpie manages account switches, proxies, routing and check-in scheduling. Befor
 
 ### 710022004 and device context
 
-The desktop API uses `device_id` with `fp=verify_<device_id>`. The plugin uses the account snapshot's `deviceId`, then the `device_id` cookie, then `aha.device.device_id` from the local Doubao client's `Local State`. File lookup results are cached for 60 seconds.
+Version 0.6.3 browser sign-in obtains the session's website-issued Web ID, application ID and client version, and saves browser metadata, fingerprint and the issued context cookie. Models, chat, quota and check-in use the matching Web request profile. Browser sign-in works without the native Doubao client.
 
-Version 0.5.2 saves device context in Magpie credentials during sign-in, import and the first load of an older account. The account carries that context when moved to another computer or a server. Each account gets device information from its owner's session, client or backup.
+Older accounts missing device metadata automatically acquire and save Web context during normal loading when native metadata is unavailable. Complete native sessions retain their saved context. Both v2/v3 backups preserve the full session for another computer or a headless Linux server.
 
-- Windows uses `%LOCALAPPDATA%\Doubao\User Data\Local State`.
-- Linux uses `$XDG_CONFIG_HOME/Doubao/Local State`, defaulting to `~/.config/Doubao/Local State`.
-- macOS uses `~/Library/Application Support/Doubao/Local State`.
-
-The `DoubaoWork` product directory is also supported at these locations. Headless Linux can use an account backup containing `session.deviceId`. Gateway 0.5.2 automatically includes captured device context in its exports, so the destination receives the complete session. Device identifiers and credentials stay on the user's computer.
-
-A live Windows-to-isolated-Ubuntu migration passed for both the gateway and the Magpie Bun host, returning `OK`. The destination used a separate home directory, and the gateway performed zero local-device lookups. See the [verification record](docs/verification.md) for scope.
-
-For `710022004`, complete the official verification with the same account, then test the model or send a new request. Version 0.6.2 clears the stale verification state after a complete successful reply. A `device_context=missing` error calls for signing in on a device with the logged-in Doubao client or importing a complete account backup. See the [model names and verification-state repair](docs/model-names-verification.md).
+For an upstream `710022004`, complete the official verification with the same account, then test the model or send a new request. A complete successful reply clears the old verification state. A saved desktop session with continuing errors can be refreshed through browser sign-in. See the [device-context repair and validation](docs/web-device-context.md).
 
 ## Move from the gateway's bundled plugin
 

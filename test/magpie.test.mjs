@@ -5,6 +5,7 @@ import {access} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createDoubaoPlugin} from '../magpie/provider.mjs';
 import DoubaoWorkPlugin from '../magpie/index.mjs';
+import {createDoubaoClient} from '../native/doubao-client.mjs';
 
 const messages = [{role:'user',content:'你好'}];
 const backup = (cookie = 'alpha', version = 3) => JSON.stringify(version === 3 ? {
@@ -133,6 +134,39 @@ test('设备查询期间替换登录，旧会话升级保持新登录资料',asy
   r.auths.set('A',structuredClone(replacement));
   release();await migration;
   assert.deepEqual(r.auths.get('A'),replacement);
+});
+
+test('旧 Cookie 账号通过正常 loader 自动获取官网上下文并保存，保留状态和登录代次',async()=>{
+  let bootstrap=0,nativeReads=0;
+  const client=createDoubaoClient({readDevice:async()=>{nativeReads++;return undefined;},fetchImpl:async()=>{
+    bootstrap++;return new Response('<script>window._ROUTER_DATA = '+JSON.stringify({loaderData:{
+      chat_layout:{chat_layout:{aid:497858,pc_version:'3.45.6',launchCore:{web_id:'website-device'}}}
+    }})+';</script>');
+  }});
+  const r=runtime({prepareSession:client.prepareSession});
+  const state={state:'needs_verification',upstreamCode:710022004,attempt:{reserved:true,status:'pending'}};
+  r.auths.set('A',{type:'oauth',uid:'legacy:0',access:'legacy-generation',
+    refresh:JSON.stringify({version:1,session:{cookieHeader:'sessionid=fixture;s_v_web_id=web-fp'}}),doubao:state});
+  await r.plugin.provider.models({},{auth:r.auths.get('A')});
+  await r.run('A',getAuth=>r.plugin.auth.loader(getAuth));
+  const saved=r.auths.get('A');
+  assert.deepEqual(saved.doubao,state);assert.equal(saved.access,'legacy-generation');
+  const session=JSON.parse(saved.refresh).session;
+  assert.equal(session.clientProfile,'web');assert.equal(session.deviceId,'website-device');
+  assert.equal(session.appId,'497858');assert.equal(session.fingerprint,'web-fp');
+  r.restart();await r.run('A',getAuth=>r.plugin.auth.loader(getAuth));
+  assert.equal(bootstrap,1);assert.equal(nativeReads,2);client.close();
+});
+
+test('会话初始化发现登录过期时保存状态并通知宿主，普通初始化失败保留原状态',async()=>{
+  for(const status of [401,502]){
+    const r=runtime({async prepareSession(){throw Object.assign(Error('fixture'),{status});}});
+    r.auths.set('A',{type:'oauth',uid:'legacy:0',access:'legacy-generation',
+      refresh:JSON.stringify({version:1,session:{cookieHeader:'sessionid=fixture'}}),doubao:{state:'ready'}});
+    await assert.rejects(r.run('A',getAuth=>r.plugin.auth.loader(getAuth)),
+      e=>e.status===status&&(status!==401||e.signIn==='expired'));
+    assert.equal(r.auths.get('A').doubao.state,status===401?'needs_login':'ready');
+  }
 });
 
 test('非流式文本与推理共用响应编码器，保留角色和文本分块',async () => {
@@ -325,13 +359,17 @@ test('浏览器登录复用隔离会话并清理临时目录，支持取消',asy
       profile = path;
       onLaunch?.();
       return {cookies:async () => loggedIn ? [{name:'sessionid',value:'fixture',domain:'.doubao.com',path:'/'}] : [],
+        metadata:()=>({userAgent:'Fixture Chrome/147.0.0.0',chromiumVersion:'147.0.0.0'}),
         dispose:async () => { closed++; }};
     },
   }});
   const method = r.plugin.auth.methods[0];
   const auth = await method.authorize();
   assert.equal(auth.opened,true);
-  assert.equal((await auth.callback()).type,'success');
+  const signed=await auth.callback();
+  assert.equal(signed.type,'success');
+  assert.equal(JSON.parse(signed.refresh).session.clientProfile,'web');
+  assert.equal(JSON.parse(signed.refresh).session.userAgent,'Fixture Chrome/147.0.0.0');
   assert.equal(closed,1); await assert.rejects(access(profile));
   loggedIn = false;
   const abort = new AbortController();

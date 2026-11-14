@@ -70,8 +70,9 @@ async function init() {
   checks.push('package-load');
 }
 
-const backup = JSON.stringify({schema:'doubao-work-accounts/v1',version:3,accounts:['alpha','bravo'].map(id => ({
-  id,provider:'doubaowork',name:'Fixture',session:{cookieHeader:'sessionid='+id},
+const backup = JSON.stringify({schema:'doubao-work-accounts/v1',version:3,accounts:['alpha','bravo','charlie'].map(id => ({
+  id,provider:'doubaowork',name:'Fixture',session:{cookieHeader:'sessionid='+id+'; s_v_web_id=web-fp',
+    ...(id==='charlie'?{clientProfile:'web'}:{})},
 }))});
 const ask = (account,content = 'ping',stream = false,extra = {}) => host.rpc('fetch',{
   provider:'doubaowork',account,model:'fixture-model',npm:'@ai-sdk/openai-compatible',
@@ -94,13 +95,20 @@ globalThis.fetch = async (url,options) => {
   const request = new Request(url,options);
   const u = new URL(request.url);
   if (u.origin !== 'https://www.doubao.com') throw Error('unexpected fixture destination');
-  if (u.pathname !== '/passport/account/info/v2/' &&
-      (u.searchParams.get('device_id') !== 'fixture-device' || u.searchParams.get('fp') !== 'verify_fixture-device'))
-    throw Error('fixture device context missing');
+  const web=request.headers.get('cookie').includes('charlie');
+  if (!['/passport/account/info/v2/','/chat/'].includes(u.pathname)) {
+    if (u.searchParams.get('device_id') !== (web?'fixture-web-device':'fixture-device') ||
+        u.searchParams.get('fp') !== (web?'web-fp':'verify_fixture-device')) throw Error('fixture device context missing');
+    if (web && (u.searchParams.get('aid') !== '497858' || u.searchParams.get('web_platform') !== 'browser' ||
+        u.searchParams.get('pc_version') !== '3.45.6' || u.searchParams.has('client_platform'))) throw Error('fixture web profile mismatch');
+  }
   appendFileSync(callsPath,JSON.stringify({path:u.pathname})+'\\n');
   switch (u.pathname) {
+    case '/chat/': return new Response('<script>window._ROUTER_DATA = '+JSON.stringify({loaderData:{chat_layout:{chat_layout:{
+      aid:497858,pc_version:'3.45.6',launchCore:{web_id:'fixture-web-device'}
+    }}}})+';</script>');
     case '/passport/account/info/v2/': return json({message:'success',data:{
-      user_id_str:request.headers.get('cookie').includes('alpha')?'111':'222',name:'Fixture'}});
+      user_id_str:web?'333':request.headers.get('cookie').includes('alpha')?'111':'222',name:'Fixture'}});
     case '/alice/user/launch': return json({data:{assistant_bot_id:'fixture-bot',ug_campaign_info:{campaign_group_code:'pc_incentive_task_mvp_v3'}}});
     case '/alice/slot/action_bar_v3/brief_list': return json({data:{entry_list:[{active_switch_conf:{
       menu_conf:{item_list:[{model_item_key:'fixture-model',name:'Fixture Model'},
@@ -136,13 +144,16 @@ globalThis.fetch = async (url,options) => {
 `);
   await init();
   const imported = await host.rpc('importFiles',{provider:'doubaowork',texts:[backup]});
-  assert.deepEqual(imported.results.map(row => row.status),['added','added']);
-  const [alpha,bravo] = imported.results.map(row => row.account);
+  assert.deepEqual(imported.results.map(row => row.status),['added','added','added']);
+  const [alpha,bravo,charlie] = imported.results.map(row => row.account);
   assert.notEqual(alpha,bravo); checks.push('account-import');
   await host.stop(); host = undefined;
   const legacy = JSON.parse(await readFile(authPath,'utf8'));
   const refresh = JSON.parse(legacy[alpha].refresh);
   assert.equal(refresh.session.deviceId,'fixture-device');
+  const webSession=JSON.parse(legacy[charlie].refresh).session;
+  assert.equal(webSession.deviceId,'fixture-web-device');assert.equal(webSession.clientProfile,'web');
+  assert.equal(webSession.fingerprint,'web-fp');assert.equal(webSession.appId,'497858');
   delete refresh.session.deviceId; delete refresh.session.fingerprint;
   legacy[alpha].refresh = JSON.stringify(refresh);
   await writeFile(authPath,JSON.stringify(legacy));
@@ -159,6 +170,7 @@ globalThis.fetch = async (url,options) => {
   assert.equal(JSON.parse(upgraded[alpha].refresh).session.deviceId,'fixture-device');
   checks.push('legacy-device-persistence');
   checks.push('nonstream-chat');
+  assert.equal((await ask(charlie)).status,200);checks.push('web-context-chat');
   const stream = await ask(bravo,'ping',true,{stream_options:{include_usage:true}});
   assert.equal(stream.status,200); assert.match(stream.text,/宿主验证通过/); assert.match(stream.text,/\[DONE\]/);
   assert.match(stream.text,/"choices":\[\],"usage"/); checks.push('token-usage');
@@ -186,6 +198,9 @@ globalThis.fetch = async (url,options) => {
   await host.stop(); host = undefined;
   await init();
   assert.equal((await ask(alpha)).status,200); assert.equal((await ask(bravo)).status,200);
+  assert.equal((await ask(charlie)).status,200);
+  const restartedCalls=(await readFile(callsPath,'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+  assert.equal(restartedCalls.filter(call=>call.path==='/chat/').length,1);checks.push('web-context-restart-persistence');
   const recovered = JSON.parse(await readFile(authPath,'utf8'));
   assert.equal(recovered[alpha].doubao.state,'ready'); checks.push('verification-recovery');
   checks.push('restart-account-isolation');

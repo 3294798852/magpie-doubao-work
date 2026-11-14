@@ -85,7 +85,7 @@ test('纯工具非流式和 SSE 回复使用 tool_calls 结束，控制 JSON 不
 
 test('原生请求包含工具定义和结果关联，下一回合可以继续返回文本',async()=>{
   let returnedCall;
-  const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async(raw,options)=>{
+  const client=createDoubaoClient({readDevice:async()=> 'fixture-device',fetchImpl:async(raw,options)=>{
     const url=new URL(raw);
     if(url.pathname==='/alice/user/launch')return Response.json({data:{assistant_bot_id:'fixture-bot'}});
     if(url.pathname==='/alice/slot/action_bar_v3/brief_list')return Response.json({data:{entry_list:[{
@@ -114,7 +114,7 @@ test('原生请求包含工具定义和结果关联，下一回合可以继续�
 test('工具 JSON 等待期间取消请求会关闭上游，保持原始取消原因',async()=>{
   let started,cancelled=false;
   const waiting=new Promise(resolve=>{started=resolve;});
-  const client=createDoubaoClient({readDevice:async()=>undefined,fetchImpl:async raw=>{
+  const client=createDoubaoClient({readDevice:async()=> 'fixture-device',fetchImpl:async raw=>{
     const path=new URL(raw).pathname;
     if(path==='/alice/user/launch')return Response.json({data:{assistant_bot_id:'fixture-bot'}});
     if(path==='/alice/slot/action_bar_v3/brief_list')return Response.json({data:{entry_list:[{

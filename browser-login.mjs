@@ -87,7 +87,7 @@ export async function launchIsolatedBrowser(browser,profile,{spawnProcess=spawn}
   const client=new PipeClient(child.stdio[3],child.stdio[4]);
   let exited=false;
   const exit=new Promise(resolve=>{child.once('exit',()=>{exited=true;client.close();resolve();});child.once('error',()=>{exited=true;client.close();resolve();});});
-  let attachment=null;
+  let attachment=null,version;
   async function dispose(){
     if(!exited&&!client.closed)await Promise.race([client.send('Browser.close').catch(()=>{}),pause(700)]);
     if(!exited)await Promise.race([exit,pause(1200)]);
@@ -98,9 +98,12 @@ export async function launchIsolatedBrowser(browser,profile,{spawnProcess=spawn}
   }
   try{
     await Promise.race([once(child,'spawn'),exit.then(()=>{throw Error('浏览器启动失败。');})]);
-    await client.send('Browser.getVersion');
+    version=await client.send('Browser.getVersion');
   }catch{await dispose();throw failure(503,'浏览器启动失败，请检查 Chrome / Edge 安装，或在工作台导入账号 JSON。');}
   return {
+    metadata(){
+      return {userAgent:version.userAgent,chromiumVersion:/Chrom(?:e|ium)\/([\d.]+)/.exec(version.userAgent||'')?.[1]};
+    },
     async cookies(){
       const {targetInfos=[]}=await client.send('Target.getTargets');
       const pages=targetInfos.filter(p=>p.type==='page');
@@ -180,8 +183,8 @@ export class BrowserLogin {
       this.update(session,'importing','检测到豆包登录，正在核验账号并保存到本机…');
       // Exactly one import attempt. A timeout is uncertain, not a reason to retry silently.
       let result;
-      try{result=await this.importAccount(cookies,session.context);}catch{
-        this.update(session,'error',session.context.destination==='cloud'?'账号接入或同步结果待核对。请先检查本机和云端列表；确认结果后再操作。':'账号接入结果待核对。请先刷新账号列表；确认未接入后，再重新登录。');await this.finish(session);return;
+      try{result=await this.importAccount(cookies,session.context,await session.handle.metadata?.());}catch(error){
+        this.update(session,'error',error?.type==='device_context_unavailable'?error.message:session.context.destination==='cloud'?'账号接入或同步结果待核对。请先检查本机和云端列表；确认结果后再操作。':'账号接入结果待核对。请先刷新账号列表；确认未接入后，再重新登录。');await this.finish(session);return;
       }
       if(!result||typeof result.name!=='string'||typeof result.updated!=='boolean')throw Error('账号核验结果异常。');
       this.update(session,'success',result.cloudSynced?'登录已完成，账号已自动接入云端。':result.updated?'已更新这个账号的登录状态；账号总数保持不变。':'新账号已接入，账号列表会自动刷新。',{accountName:result.name.slice(0,64),updated:result.updated,cloudSynced:result.cloudSynced===true,cloudOrigin:result.cloudOrigin||''});

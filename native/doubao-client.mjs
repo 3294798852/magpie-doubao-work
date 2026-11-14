@@ -1,8 +1,9 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {normalizeProviderError,upstreamCode} from './protocol.mjs';
 import {decodeEvents} from './doubao-stream.mjs';
-import {readDesktopDeviceId} from './desktop-device.mjs';
-import {withDeviceContext} from './session.mjs';
+import {readDesktopDeviceId,deviceId} from './desktop-device.mjs';
+import {withDeviceContext,cookieValue} from './session.mjs';
+import {readWebContext} from './web-device.mjs';
 import {createToolTurn,toolDeltas} from './tool-calling.mjs';
 
 const ORIGIN='https://www.doubao.com';
@@ -25,7 +26,7 @@ export const fail=(status,message)=>Object.assign(Error(message),{status});
 function verificationContext(error,session){
  if(error?.upstream_code!==710022004||!session)return error;
  error.device_context=session.deviceId?'present':'missing';
- if(!session.deviceId)error.message='豆包上游要求验证（710022004），当前账号缺少客户端设备上下文。请在安装并登录豆包客户端的设备上重新接入账号，或导入含设备上下文的账号备份后重试。';
+ if(!session.deviceId)error.message='豆包上游要求验证（710022004），请求缺少完整的会话设备上下文。请升级到最新版本后重新登录账号。';
  return error;
 }
 export function vendorError(status,v={},session){
@@ -49,9 +50,14 @@ function endpoint(route,s){
   pc_version:s.clientVersion||'2.33.5',doubao_pc_version:s.clientVersion||'2.33.5',
   'use-olympus-account':'1',language:'zh',region:'CN',sys_region:'CN',
  };
- const cookies=new Map(s.cookieHeader.split('; ').map(k=>[k.slice(0,k.indexOf('=')),k.slice(k.indexOf('=')+1)]));
- for(const [k,v] of Object.entries({...q,device_id:s.deviceId||cookies.get('device_id'),web_id:s.webId||cookies.get('web_id'),
-  fp:s.fingerprint||cookies.get('s_v_web_id')||cookies.get('fp'),chromium_version:s.chromiumVersion,channel:s.channel}))
+ if(route!=='identity'&&s.clientProfile==='web'){
+  Object.assign(q,{aid:s.appId,real_aid:s.appId,web_platform:'browser',doubao_device_platform:'web',
+   pc_version:s.clientVersion,doubao_pc_version:s.clientVersion,
+   language:cookieValue(s,'i18next')||'zh',region:cookieValue(s,'flow_user_country')||'CN',sys_region:cookieValue(s,'flow_user_country')||'CN'});
+  delete q.client_platform;delete q.runtime;delete q.runtime_version;
+ }
+ for(const [k,v] of Object.entries({...q,device_id:s.deviceId||cookieValue(s,'device_id'),web_id:s.webId||cookieValue(s,'web_id'),
+  fp:s.fingerprint||cookieValue(s,'s_v_web_id')||cookieValue(s,'fp'),chromium_version:s.chromiumVersion,channel:s.channel}))
   if(v)u.searchParams.set(k,v);
  return u.href;
 }
@@ -170,33 +176,55 @@ function dailyTasks(value,group){
 
 export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=readDesktopDeviceId}={}){
  // Only fixed Doubao endpoints are reachable; redirects are never followed.
- const catalogs=new Map();
+ const catalogs=new Map(),webContexts=new Map();
+ async function prepareSession(s,{signal}={}){
+  signal?.throwIfAborted();
+  s=await withDeviceContext(s,readDevice);
+  if(s.clientProfile!=='web'&&s.deviceId)return s;
+  if(s.clientProfile==='web'&&deviceId(s.deviceId)&&s.webId===s.deviceId&&s.appId&&s.clientVersion)return s;
+  const key=createHash('sha256').update(JSON.stringify([s.cookieHeader,s.userAgent])).digest('hex');
+  let cached=webContexts.get(key);
+  if(!cached||now()-cached.at>=300000){
+   if(webContexts.size>=64)webContexts.delete(webContexts.keys().next().value);
+   cached={at:now(),value:readWebContext(s,{fetchImpl})};
+   webContexts.set(key,cached);
+   cached.value.catch(()=>{if(webContexts.get(key)===cached)webContexts.delete(key);});
+  }
+  const context=await new Promise((resolve,reject)=>{
+   const stop=()=>reject(signal.reason);
+   signal?.addEventListener('abort',stop,{once:true});
+   cached.value.then(resolve,reject).finally(()=>signal?.removeEventListener('abort',stop));
+   if(signal?.aborted)stop();
+  });
+  signal?.throwIfAborted();
+  return {...s,...context};
+ }
  async function request(s,route,data,{signal}={}){
   const method=route==='identity'?'GET':'POST';
   const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(route==='chat'?600000:25000)]):AbortSignal.timeout(route==='chat'?600000:25000);
-  let response,session;
+  let response;
   try{
-   session=route==='identity'?s:await withDeviceContext(s,readDevice);
-   response=await fetchImpl(endpoint(route,session),{method,redirect:'error',signal:requestSignal,
+   response=await fetchImpl(endpoint(route,s),{method,redirect:'error',signal:requestSignal,
     headers:{Cookie:s.cookieHeader,Origin:ORIGIN,Referer:ORIGIN+'/chat/','Agw-Js-Conv':'str',
      Accept:route==='chat'?'text/event-stream, application/json':'application/json','Content-Type':'application/json',
      ...(s.userAgent?{'User-Agent':s.userAgent}:{})},...(method==='POST'?{body:JSON.stringify(data)}:{})});
   }catch{signal?.throwIfAborted();throw fail(502,'连接豆包工作失败。');}
   if(route==='chat'&&response.ok&&/^text\/event-stream(?:;|$)/i.test(response.headers.get('content-type')||''))return response;
   let value;
-  try{value=await limitedJson(response);}catch(error){if(!response.ok)throw vendorError(response.status,{},session);throw error;}
+  try{value=await limitedJson(response);}catch(error){if(!response.ok)throw vendorError(response.status,{},s);throw error;}
   const code=Number(upstreamCode(value)||0);
   if(!response.ok||code!==0||route==='chat'||value?.extra?.decision||value?.decision){
    const retry=response.headers.get('retry-after'),seconds=retry!==null?Number(retry):NaN;
    const delay=Number.isFinite(seconds)?seconds*1000:Date.parse(retry)-now();
-   const err=vendorError(response.status,{...value,retryAfterMs:delay},session);
+   const err=vendorError(response.status,{...value,retryAfterMs:delay},s);
    if(!response.ok||code!==0||route==='chat'||err.state)throw err;
   }
   return value;
  }
  const launch=(s,opts)=>request(s,'launch',{},opts);
  async function catalog(s,opts){
-  const key=createHash('sha256').update(s.cookieHeader).digest('hex');
+  s=await prepareSession(s,opts);
+  const key=createHash('sha256').update(JSON.stringify([s.cookieHeader,s.clientProfile,s.deviceId,s.appId,s.clientVersion])).digest('hex');
   const previous=catalogs.get(key);
   if(previous&&now()-previous.at<300000)return previous;
   const l=await launch(s,opts),bot=str(l.data?.assistant_bot_id||l.assistant_bot_id);
@@ -209,6 +237,7 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
   catalogs.set(key,data);return data;
  }
  return {
+  prepareSession,
   async identity(s,opts){
    const r=await request(s,'identity',undefined,opts),d=r.data||r;
    // Prefer lossless string form; refuse an imprecise numeric ID.
@@ -219,11 +248,13 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
   async models(s,opts){return Object.keys((await catalog(s,opts)).models);},
   async modelDetails(s,opts){return (await catalog(s,opts)).models;},
   async quota(s,opts){
+   s=await prepareSession(s,opts);
    const overview=await request(s,'quota',{product_line:'membership'},opts);
    const entry=await request(s,'quotaName',{},opts).catch(e=>{if(e.state)throw e;return {};});
    return quotaView(overview,entry);
   },
   async checkin(s,{signal,queryOnly,reserve}){
+   s=await prepareSession(s,{signal});
    const l=await launch(s,{signal}),group=l.data?.ug_campaign_info?.campaign_group_code;
    if(typeof group!=='string'||!group)return {status:'inactive'};
    const detail=()=>request(s,group==='pc_incentive_task_mvp_v3'?'detail':'list',{campaign_group_code:group},{signal}).then(x=>dailyTasks(x,group));
@@ -240,7 +271,7 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
    return {status:after?.checked?(err?'done':'claimed'):'pending'};
   },
   async *chat(s,body,{signal}={}){
-   s=await withDeviceContext(s,readDevice);
+   s=await prepareSession(s,{signal});
    const {bot,models}=await catalog(s,{signal});
    const model=Object.hasOwn(models,body.model)?models[body.model]:undefined;
    if(!model)throw fail(404,'此账号的豆包模型目录已变化。');
@@ -277,6 +308,6 @@ export function createDoubaoClient({fetchImpl=fetch,now=Date.now,readDevice=read
     throw verificationContext(error,s);
    }
   },
-  close(){catalogs.clear();},
+  close(){catalogs.clear();webContexts.clear();},
  };
 }

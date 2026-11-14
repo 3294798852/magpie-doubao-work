@@ -44,11 +44,13 @@ function describeModel(id,name = id) {
   };
 }
 
-export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = Date.now,
-  browserOptions,readDevice = readDesktopDeviceId} = {}) {
+export function createDoubaoPlugin(input, {readDevice = readDesktopDeviceId,
+  doubao = createDoubaoClient({readDevice}), now = Date.now,browserOptions} = {}) {
   const updates = new Map(), active = new Set();
   const today = () => dayTime(new Date(now())).day;
   const tomorrow = () => new Date(Date.parse(today()+'T00:00:00+08:00')+86400000).toISOString();
+  const prepareSession = (session,options) => doubao.prepareSession
+    ? doubao.prepareSession(session,options) : withDeviceContext(session,readDevice);
 
   async function modelsFor(session,options) {
     if (doubao.modelDetails) {
@@ -82,9 +84,14 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
     });
   }
 
-  async function sessionFor(getAuth) {
+  async function sessionFor(getAuth,options) {
     const auth = await getAuth(), stored = sessionOf(auth);
-    const session = await withDeviceContext(stored,readDevice);
+    let session;
+    try { session = await prepareSession(stored,options); }
+    catch (error) {
+      options?.signal?.throwIfAborted();
+      throw await failed(auth,getAuth,error,randomUUID());
+    }
     if (session !== stored) {
       const refresh = JSON.stringify({version:1,session});
       await updateAuth(auth,getAuth,current => current.refresh === refresh ? current : {...current,refresh});
@@ -108,7 +115,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
   }
 
   async function signIn(raw,{signal} = {}) {
-    const session = await withDeviceContext(normalizeSession(raw),readDevice);
+    const session = await prepareSession(normalizeSession(raw),{signal});
     const info = await doubao.identity(session,{signal});
     signal?.throwIfAborted();
     return {type:'success',refresh:JSON.stringify({version:1,session}),access:randomUUID(),expires:0,
@@ -116,7 +123,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
   }
 
   async function* chat(getAuth,body,{signal,requestId}) {
-    const {auth,session} = await sessionFor(getAuth);
+    const {auth,session} = await sessionFor(getAuth,{signal});
     if (!chatRoutable({...auth.doubao,enabled:true,state:auth.doubao?.state || 'ready'},now())) ready(auth,now());
     const leave = enter(auth);
     let produced = false;
@@ -145,7 +152,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
       const target = new URL(request.url);
       if (target.origin !== 'https://www.doubao.com') throw fail(400,'豆包插件接口地址有误。');
       if (request.method === 'GET' && target.pathname === '/v1/models') {
-        const {session} = await sessionFor(getAuth);
+        const {session} = await sessionFor(getAuth,{signal:request.signal});
         const models = await modelsFor(session,{signal:request.signal});
         return Response.json({object:'list',data:Object.values(models).map(({id,name}) => ({id,name,object:'model',owned_by:ID}))});
       }
@@ -175,7 +182,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
       async models(_provider,{auth,signal} = {}) {
         if (!auth) return {};
         try {
-          const session = await withDeviceContext(sessionOf(auth),readDevice);
+          const session = await prepareSession(sessionOf(auth),{signal});
           return await modelsFor(session,{signal});
         } catch (error) {
           if (error?.state === 'needs_login') error.signIn = 'expired';
@@ -220,7 +227,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
         return {apiKey:'doubaowork-plugin',baseURL:API,fetch:(url,init) => fetchRequest(getAuth,url,init)};
       },
       async usage(getAuth,_provider,{signal} = {}) {
-        const {auth,session} = await sessionFor(getAuth);
+        const {auth,session} = await sessionFor(getAuth,{signal});
         try {
           const data = await doubao.quota(session,{signal});
           return {plan:data.plan,user:auth.name || auth.accountId,
@@ -232,7 +239,7 @@ export function createDoubaoPlugin(input, {doubao = createDoubaoClient(), now = 
         }
       },
       async checkin(getAuth,_provider,{signal} = {}) {
-        const {auth,session} = await sessionFor(getAuth);
+        const {auth,session} = await sessionFor(getAuth,{signal});
         let leave;
         try {
           ready(auth,now());
