@@ -92,6 +92,19 @@ test('额度字段向 Magpie 保留未知百分比与免限状态',async()=>{
  assert.equal(data.windows[2].limit,12);
 });
 
+test('额度金额带千分位分隔符时仍解析为数值',async()=>{
+ const client=createDoubaoClient({readDevice:async()=> 'fixture-device',fetchImpl:async raw=>{
+  if(new URL(raw).pathname.endsWith('/entry/config/'))return reply({data:{}});
+  return reply({data:{member_info:{},incentive_quota_section:{window_limit_groups:[{
+   feature_group_name:'奖励',window_limits:[{window_type:3,used_amount:'179',total_amount:'1,950'}],
+  }]}}});
+ }});
+ const data=await client.quota(s);
+ assert.equal(data.windows.length,1);
+ assert.equal(data.windows[0].balance,1771);
+ assert.equal(data.windows[0].view,'剩 1771 额度');
+});
+
 test('聊天请求保留账号设备优先级，并让 device_id 与 fp 使用同一设备',async()=>{
  const cases=[
   {session:{...s,deviceId:'account-device',fingerprint:'web-fingerprint'},device:'account-device'},
