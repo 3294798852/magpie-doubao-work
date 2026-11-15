@@ -130,7 +130,7 @@ function quotaView(overview,entry){
  const enterprise=data.member_info?.hasEnterpriseSubscription===true&&(!personal||usable(data.enterprise_window_limit_section)||!usable(data.window_limit_section));
  const rows=subscription(enterprise?data.enterprise_window_limit_section:personal?data.window_limit_section:null);
  if(!enterprise)rows.push(...limits(data.quota_package_section).filter(({window})=>Number(window?.window_type)===3));
- const value=n=>n!=null&&n!==''&&Number.isFinite(Number(n))&&Number(n)>=0?Number(n):undefined;
+ const value=n=>{const v=n==null||n===''?NaN:Number(String(n).replace(/[,\s\u00a0]/g,''));return Number.isFinite(v)&&v>=0?v:undefined;};
  const windows=rows.map(({group,window:w})=>{
   const type=Number(w.window_type),time={1:'5 小时',2:'近 7 天',4:'每月'}[type]||'订阅额度';
   const pct=value(w.used_percent),used=value(w.used_amount),total=value(w.total_amount);
