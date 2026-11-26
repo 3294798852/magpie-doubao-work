@@ -5,10 +5,27 @@ import {PassThrough} from 'node:stream';
 import {mkdtemp,writeFile,readFile,readdir,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir,homedir} from 'node:os';
-import {BrowserLogin,launchIsolatedBrowser} from '../browser-login.mjs';
+import {BrowserLogin,launchIsolatedBrowser,removeLoginDirectory} from '../browser-login.mjs';
 import {assertPrivate} from '../private-files.mjs';
 
 const browser={id:'chrome',name:'Fixture Chrome',path:'/fixture/chrome'};
+test('临时目录删除跨运行时重试可恢复错误，成功后停止等待',async()=>{
+  let calls=0;const delays=[];
+  await removeLoginDirectory('fixture',{async remove(path,options){
+    assert.equal(path,'fixture');assert.deepEqual(options,{recursive:true,force:true});
+    if(++calls<3)throw Object.assign(Error('locked'),{code:'EBUSY'});
+  },wait:async ms=>{delays.push(ms);}});
+  assert.equal(calls,3);assert.deepEqual(delays,[100,200]);
+});
+
+test('删除权限错误立即报告，持续占用耗尽重试后保留原错误',async()=>{
+  for(const code of ['EACCES','EBUSY']){
+    let calls=0;const error=Object.assign(Error('fixture'),{code});
+    await assert.rejects(removeLoginDirectory('fixture',{async remove(){calls++;throw error;},wait:async()=>{}}),
+      received=>received===error);
+    assert.equal(calls,code==='EBUSY'?6:1);
+  }
+});
 async function temporary(t){
   const root=await mkdtemp(join(tmpdir(),'dw-startup-test-'));
   t.after(()=>rm(root,{recursive:true,force:true}));return root;
@@ -18,7 +35,7 @@ function processFixture(onSpawn=()=>{}){
   child.kill=()=>{child.kills++;child.exitCode=0;child.emit('exit',0,'SIGTERM');return true;};
   return {child,spawnProcess(path,args,options){
     assert.equal(path,browser.path);assert.deepEqual(options.stdio,['ignore','ignore','pipe']);
-    assert.equal(options.shell,false);assert.equal(options.windowsHide,true);
+    assert.equal(options.shell,false);assert.equal(options.windowsHide,false);
     queueMicrotask(()=>{child.emit('spawn');onSpawn(child,args);});return child;
   }};
 }

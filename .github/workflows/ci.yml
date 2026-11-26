@@ -32,7 +32,14 @@ jobs:
         run: |
           sudo chown root:root /opt/microsoft/msedge/msedge-sandbox
           sudo chmod 4755 /opt/microsoft/msedge/msedge-sandbox
-      - run: node scripts/browser-smoke.mjs
+      - name: Test the real browser sign-in entry
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            dbus-run-session -- node scripts/browser-smoke.mjs
+          else
+            node scripts/browser-smoke.mjs
+          fi
         env:
           HTTP_PROXY: http://127.0.0.1:9
           HTTPS_PROXY: http://127.0.0.1:9

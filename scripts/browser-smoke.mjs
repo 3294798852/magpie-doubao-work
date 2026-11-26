@@ -18,7 +18,7 @@ for(const browser of browsers){
     async launch(selected,path,options){
      profile=path;
      const handle=await launchIsolatedBrowser(selected,path,{...options,
-      spawnProcess:(binary,args,spawnOptions)=>spawn(binary,[...args.slice(0,-1),'--headless=new','about:blank'],spawnOptions)});
+      spawnProcess:(binary,args,spawnOptions)=>spawn(binary,[...args.slice(0,-1),'--headless=new','about:blank'],{...spawnOptions,windowsHide:true})});
      metadata=handle.metadata();
      if(!metadata.userAgent||!metadata.chromiumVersion)throw Error('浏览器元数据不完整。');
      setTimeout(()=>abort.abort(),100);return handle;

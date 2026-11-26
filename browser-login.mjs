@@ -13,6 +13,18 @@ const LOGIN_URL='https://www.doubao.com/chat/';
 const ACTIVE=new Set(['starting','waiting','awaiting_confirmation','importing']);
 const failure=(status,message)=>Object.assign(new Error(message),{status});
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const RETRY_REMOVE=new Set(['EBUSY','EPERM','ENOTEMPTY','EMFILE','ENFILE']);
+
+// Match Node's bounded removal retries in runtimes that ignore rm's retry options.
+export async function removeLoginDirectory(path,{remove=rm,wait=pause}={}){
+  for(let attempt=0;;attempt++){
+    try{await remove(path,{recursive:true,force:true});return;}
+    catch(error){
+      if(attempt===5||!RETRY_REMOVE.has(error.code))throw error;
+      await wait((attempt+1)*100);
+    }
+  }
+}
 
 // Discover executable locations only. Never inspect the user's regular browser profile.
 export async function availableBrowsers(platform=process.platform,home=homedir(),env=process.env) {
@@ -188,7 +200,7 @@ export async function launchIsolatedBrowser(browser,profile,{spawnProcess=spawn,
     if(!exited)throw startupFailure(browser,'close',closing,{error:{code:'DW_BROWSER_CLOSE_TIMEOUT'},code:child.exitCode,signal:child.signalCode});
   }
   try{
-    child=spawnProcess(browser.path,browserArgs(profile),{stdio:['ignore','ignore','pipe'],shell:false,detached:false,windowsHide:true});
+    child=spawnProcess(browser.path,browserArgs(profile),{stdio:['ignore','ignore','pipe'],shell:false,detached:false,windowsHide:false});
     child.once('exit',(code,signal)=>onExit(code,signal));child.once('error',error=>onExit(null,null,error));
     child.stderr?.on('data',captureStderr);
     await Promise.race([once(child,'spawn',{signal:requestSignal}),exit.then(()=>{throw Error('浏览器启动失败。');})]);
@@ -347,7 +359,7 @@ export class BrowserLogin {
       if(session.handle)try{await session.handle.dispose();}catch(error){closed=false;closeError=error;}
       if(session.profile&&closed){
         const started=Date.now();
-        try{await rm(session.profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
+        try{await removeLoginDirectory(session.profile);}
         catch(error){closed=false;closeError=startupFailure({id:session.browserId},'cleanup',started,{error});}
       }
       if(!closed&&this.current===session){
