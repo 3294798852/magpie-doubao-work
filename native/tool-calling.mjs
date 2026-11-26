@@ -4,6 +4,61 @@ import {randomUUID} from 'node:crypto';
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const fail = (status,message,type = 'invalid_request_error') => Object.assign(new Error(message),{status,type});
 
+// The model is asked for a bare JSON object, but long tool turns often wrap it
+// in a Markdown fence or in explanation text. The recovery scan is bounded so a
+// malformed huge reply cannot make parsing quadratic.
+const MAX_TOLERANCE_SCAN = 4*1024*1024;
+const MAX_MARKER_OCCURRENCES = 64;
+
+function objectEnd(text,start){
+  let depth = 0, quoted = false, escaped = false;
+  for(let index=start;index<text.length;index++){
+    const value = text[index];
+    if(quoted){
+      if(escaped) escaped = false;
+      else if(value === '\\') escaped = true;
+      else if(value === '"') quoted = false;
+      continue;
+    }
+    if(value === '"') quoted = true;
+    else if(value === '{') depth++;
+    else if(value === '}' && --depth === 0) return index;
+  }
+  return -1;
+}
+
+// markerObject returns the last valid JSON object carrying the per-turn marker.
+// Returning the last one ignores an echoed example that precedes the real call.
+function markerObject(content,marker){
+  try {
+    const value = JSON.parse(content.trim());
+    if(object(value) && marker in value) return value;
+  } catch {}
+  if(content.length > MAX_TOLERANCE_SCAN) return undefined;
+  const found = [];
+  const add = text => {
+    try {
+      const value = JSON.parse(text);
+      if(object(value) && marker in value) found.push(value);
+    } catch {}
+  };
+  for(const match of content.matchAll(/```[^\n`]*\n?([\s\S]*?)```/g)) add(match[1].trim());
+  let at = content.indexOf(marker), occurrences = 0;
+  while(at >= 0 && occurrences++ < MAX_MARKER_OCCURRENCES){
+    for(let start = content.lastIndexOf('{',at);start >= 0;start = start > 0 ? content.lastIndexOf('{',start-1) : -1){
+      const end = objectEnd(content,start);
+      if(end > at){
+        const before = found.length;
+        add(content.slice(start,end+1));
+        if(found.length > before) break;
+      }
+      if(start === 0) break;
+    }
+    at = content.indexOf(marker,at+1);
+  }
+  return found.at(-1);
+}
+
 export function parseToolOptions(value) {
   if (value.functions !== undefined || value.function_call !== undefined)
     throw fail(400,'请使用 tools 和 tool_choice 声明客户端函数。');
@@ -58,8 +113,7 @@ export function createToolTurn(body) {
   ].join('\n');
 
   function parse(content) {
-    let value;
-    try {value = JSON.parse(content.trim());} catch {}
+    const value = markerObject(content,marker);
     const calls = value?.[marker];
     if (calls === undefined) {
       if (content.includes(marker) || forced) throw fail(502,'模型未返回完整且符合工具选择要求的调用。','invalid_tool_call');
