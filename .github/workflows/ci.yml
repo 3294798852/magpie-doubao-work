@@ -27,6 +27,11 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm run check
       - run: npm test
+      - name: Restore installed Edge sandbox permissions
+        if: runner.os == 'Linux' && matrix.node == 24
+        run: |
+          sudo chown root:root /opt/microsoft/msedge/msedge-sandbox
+          sudo chmod 4755 /opt/microsoft/msedge/msedge-sandbox
       - if: matrix.node == 24
         run: node scripts/browser-smoke.mjs
   browser-bun:

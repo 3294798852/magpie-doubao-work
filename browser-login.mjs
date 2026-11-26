@@ -108,6 +108,8 @@ function startupFailure(browser,phase,started,{error,code,signal,stderr='',clean
     [reason,message]=['DW_BROWSER_POLICY','浏览器管理策略禁止登录通信，请联系设备管理员检查 RemoteDebuggingAllowed。'];
   else if(/Missing X server|no DISPLAY|cannot open display|failed to connect to.*Wayland/i.test(stderr))
     [reason,message]=['DW_BROWSER_DISPLAY','浏览器无法连接图形桌面，请在可用的桌面会话中登录。'];
+  else if(/SUID sandbox.*not configured correctly|No usable sandbox|Running as root without --no-sandbox/i.test(stderr))
+    [reason,message]=['DW_BROWSER_SANDBOX','浏览器沙箱组件安装或权限异常，请修复浏览器安装后重试。'];
   else if(Number.isInteger(code)||signal)
     [reason,message]=['DW_BROWSER_EXITED','浏览器在登录通信建立前退出。'];
   else if(reason==='DW_BROWSER_ENDPOINT_TIMEOUT')message='浏览器已启动，等待登录通信端点超时。';

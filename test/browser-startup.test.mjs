@@ -59,13 +59,14 @@ test('浏览器执行失败、早退和管理策略各自保留可区分的原�
   await assert.rejects(launchIsolatedBrowser(browser,root,{spawnProcess(){
     throw Object.assign(Error('PRIVATE_PATH'),{code:'EACCES'});
   }}),error=>error.diagnostic.code==='DW_BROWSER_EXECUTABLE_DENIED'&&error.diagnostic.phase==='spawn'&&!error.message.includes('PRIVATE_PATH'));
-  for(const policy of [false,true]){
+  for(const policy of [false,true,'sandbox']){
     const fixture=processFixture(child=>{
-      if(policy)child.stderr.write('Remote debugging is disallowed by the system admin policy.\n');
+      if(policy==='sandbox')child.stderr.write('The SUID sandbox helper binary was found, but is not configured correctly.\n');
+      else if(policy)child.stderr.write('Remote debugging is disallowed by the system admin policy.\n');
       child.exitCode=21;child.emit('exit',21,null);
     });
     await assert.rejects(launchIsolatedBrowser(browser,root,{spawnProcess:fixture.spawnProcess}),error=>
-      error.diagnostic.code===(policy?'DW_BROWSER_POLICY':'DW_BROWSER_EXITED')&&error.diagnostic.exitCode===21);
+      error.diagnostic.code===(policy==='sandbox'?'DW_BROWSER_SANDBOX':policy?'DW_BROWSER_POLICY':'DW_BROWSER_EXITED')&&error.diagnostic.exitCode===21);
   }
 });
 
