@@ -130,3 +130,16 @@ test('故障记录写入期间取消，完成写入后保持用户的取消状�
   assert.equal(login.status().state,'cancelled');assert.equal(login.status().active,false);
   assert.deepEqual(await readdir(root),[]);await login.dispose();
 });
+
+test('取消时仍有 Cookie 查询，通信关闭后保持取消状态并释放资料',async t=>{
+  const root=await temporary(t);let began,rejectCookies;
+  const pending=new Promise(resolve=>{began=resolve;});
+  const login=new BrowserLogin({tmpRoot:root,pollMs:60000,discover:async()=>[browser],launch:async()=>({
+    async cookies(){began();return new Promise((_resolve,reject)=>{rejectCookies=reject;});},
+    async dispose(){rejectCookies(Error('fixture disconnected'));}
+  })});
+  await login.start();clearTimeout(login.current.timer);
+  const inspect=login.inspect(login.current);await pending;await login.cancel();await inspect;
+  assert.equal(login.status().state,'cancelled');assert.equal(login.status().active,false);
+  assert.deepEqual(await readdir(root),[]);await login.dispose();
+});

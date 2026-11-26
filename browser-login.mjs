@@ -117,6 +117,8 @@ function startupFailure(browser,phase,started,{error,code,signal,stderr='',clean
   else if(reason==='DW_BROWSER_CONNECT_TIMEOUT'||reason==='DW_BROWSER_PROTOCOL_TIMEOUT')message='浏览器已启动，登录通信握手超时。';
   else if(reason==='DW_BROWSER_DISCONNECTED')message='浏览器登录通信在初始化时断开。';
   else if(reason==='DW_BROWSER_CLOSE_TIMEOUT')message='登录浏览器关闭等待超时，临时资料目录已保留。';
+  else if(phase==='cleanup')
+    [reason,message]=['DW_BROWSER_PROFILE_CLEANUP','登录浏览器临时资料目录清理失败，目录已保留。'];
   else if(phase==='endpoint'&&['EACCES','EPERM'].includes(errorCode))
     [reason,message]=['DW_BROWSER_PROFILE_ACCESS','无法读取登录浏览器的临时资料目录，请检查当前用户的目录权限。'];
   const diagnostic={code:reason,phase,platform:process.platform,runtime:process.versions.bun?'Bun '+process.versions.bun:'Node '+process.versions.node,
@@ -236,7 +238,11 @@ export class BrowserLogin {
     try{
       await saveStartupDiagnostic(this.diagnosticFile,diagnostic,session.profile);
       diagnostic.file=this.diagnosticFile;message+=' 启动诊断已保存到 '+this.diagnosticFile;
-    }catch{diagnostic.saved=false;}
+    }catch(error){
+      diagnostic.saved=false;
+      diagnostic.fileError=typeof error.code==='string'?error.code:'private_file_error';
+      message+=' 诊断文件未能保存（'+diagnostic.fileError+'）。';
+    }
     delete diagnostic.stderr;delete diagnostic.detail;
     return {message,diagnostic};
   }
@@ -258,6 +264,7 @@ export class BrowserLogin {
       if(!browser)throw failure(409,'未找到所选浏览器。请安装 Chrome / Edge，或在工作台导入账号 JSON。');
       if(session.cancelled)return;
       this.state.browserName=browser.name;
+      session.browserId=browser.id;
       phase='profile';
       await ensurePrivateDir(this.tmpRoot);
       session.profile=await mkdtemp(join(this.tmpRoot,'doubao-login-'));await securePrivate(session.profile,{directory:true});
@@ -309,7 +316,8 @@ export class BrowserLogin {
       this.update(session,'success',result.cloudSynced?'登录已完成，账号已自动接入云端。':result.updated?'已更新这个账号的登录状态；账号总数保持不变。':'新账号已接入，账号列表会自动刷新。',{accountName:result.name.slice(0,64),updated:result.updated,cloudSynced:result.cloudSynced===true,cloudOrigin:result.cloudOrigin||''});
       await this.finish(session);
     }catch{
-      this.update(session,'error','浏览器会话已断开，请重新打开登录。已有账号不受影响。');await this.finish(session);
+      if(!session.cancelled)this.update(session,'error','浏览器会话已断开，请重新打开登录。已有账号不受影响。');
+      await this.finish(session);
     }finally{session.busy=false;}
   }
   async finish(session){
@@ -318,7 +326,11 @@ export class BrowserLogin {
     session.finishing=(async()=>{
       let closed=!session.cleanupPending,closeError;
       if(session.handle)try{await session.handle.dispose();}catch(error){closed=false;closeError=error;}
-      if(session.profile&&closed)await rm(session.profile,{recursive:true,force:true}).catch(()=>{closed=false;});
+      if(session.profile&&closed){
+        const started=Date.now();
+        try{await rm(session.profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
+        catch(error){closed=false;closeError=startupFailure({id:session.browserId},'cleanup',started,{error});}
+      }
       if(!closed&&this.current===session){
         const result=closeError?.diagnostic?await this.diagnose(session,closeError):null;
         this.state={...this.state,message:this.state.message+' '+(result?.message||'临时会话清理未完成，请关闭专用窗口后检查。'),

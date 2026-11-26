@@ -27,6 +27,8 @@ export async function browserSignIn(signIn, {signal, browserOptions = {}} = {}) 
     return result;
   } finally {
     await login?.dispose();
+    if(login?.status().cleanupPending)
+      console.error('[doubaowork.browser] '+JSON.stringify(login.status().diagnostic||{code:'DW_BROWSER_CLEANUP_PENDING'}));
     if (!login?.status().cleanupPending) await rm(root,{recursive:true,force:true});
   }
 }
