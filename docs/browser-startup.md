@@ -65,7 +65,7 @@
 
 代码验收覆盖 Windows / Ubuntu / macOS 的 Node.js 22 / 24，以及 Windows Bun 1.3.14 / 1.4.5。两个仓库分别运行完整回归和真实 Chrome/Edge 的插件登录入口，代理环境为不可用代理且本机排除列表为空。[插件 CI](https://github.com/3294798852/magpie-doubao-work/actions/runs/45864013319) · [网关 CI](https://github.com/3294798852/doubao-work-gateway/actions/runs/45864036543)
 
-网关八项检查通过。本次记录时插件七项通过，macOS Node 24 一项仍在等待运行器；相同的共享浏览器实现已通过网关的 macOS Node 24 检查。本机已安装 0.6.4，已安装包通过真实宿主回归及 Chrome/Edge 的启动、等待、取消和资料清理。
+网关与插件各八项检查全部通过。插件 macOS Node 24 首次因运行器容量不足取消，单项补跑后通过。本机已安装 0.6.4，已安装包通过真实宿主回归及 Chrome/Edge 的启动、等待、取消和资料清理。
 
 ## English
 
