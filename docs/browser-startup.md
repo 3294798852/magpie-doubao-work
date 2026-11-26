@@ -63,6 +63,10 @@
 
 一次初始并行测试中，Edge 出现关闭等待超时。后续逐进程跟踪正常退出；Windows CI 进一步捕获了 Bun 1.3.14 / 1.4.5 删除临时资料时的 `EBUSY`，并确认传入原生重试选项仍立即失败。两版现使用统一删除重试处理可恢复的文件系统错误，最多五次重试、累计等待 1.5 秒。终止失败保留原错误及目录。`close` 和 `cleanup` 阶段均留存诊断，Magpie 宿主 stderr 同步保留摘要。
 
+代码验收覆盖 Windows / Ubuntu / macOS 的 Node.js 22 / 24，以及 Windows Bun 1.3.14 / 1.4.5。两个仓库分别运行完整回归和真实 Chrome/Edge 的插件登录入口，代理环境为不可用代理且本机排除列表为空。[插件 CI](https://github.com/3294798852/magpie-doubao-work/actions/runs/45864013319) · [网关 CI](https://github.com/3294798852/doubao-work-gateway/actions/runs/45864036543)
+
+网关八项检查通过。本次记录时插件七项通过，macOS Node 24 一项仍在等待运行器；相同的共享浏览器实现已通过网关的 macOS Node 24 检查。本机已安装 0.6.4，已安装包通过真实宿主回归及 Chrome/Edge 的启动、等待、取消和资料清理。
+
 ## English
 
 Version 0.6.4 uses the browser's temporary loopback WebSocket endpoint for the shared login flow. The old Windows Bun pipe failure was reproduced under Bun 1.3.14 and repaired through this path. Real Chrome and Edge startup, metadata, cancellation and cleanup passed under Node 24 and Bun 1.3.14 / 1.4.5. Startup failures now retain stage, runtime, exit information and a private diagnostic file. The original remote device's cause remains pending a new diagnostic capture.

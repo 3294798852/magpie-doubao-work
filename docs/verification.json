@@ -652,14 +652,163 @@
       "plugin": 79,
       "gateway": 127
     },
-    "affectedRecheck": 21,
-    "currentTestCounts": {
-      "plugin": 81,
-      "gateway": 129
+    "affectedRecheck": {
+      "browserStartup": 11,
+      "browserLogin": 13
     },
+    "currentTestCounts": {
+      "plugin": 84,
+      "gateway": 132
+    },
+    "installed": {
+      "version": "0.6.4",
+      "spec": "github:3294798852/magpie-doubao-work",
+      "enabled": true,
+      "legacyDisabled": true,
+      "update": [
+        "+ magpie-doubao-work@github:3294798852/magpie-doubao-work#6086935",
+        "1 package installed [2.35s]"
+      ]
+    },
+    "installedEntry": [
+      {
+        "platform": "win32",
+        "runtime": "Bun 1.4.5",
+        "browser": "chrome",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 1838,
+        "passed": true
+      },
+      {
+        "platform": "win32",
+        "runtime": "Bun 1.4.5",
+        "browser": "edge",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 2938,
+        "passed": true
+      }
+    ],
+    "proxyControls": [
+      {
+        "runtime": "Node",
+        "passed": true
+      },
+      {
+        "runtime": "Bun",
+        "passed": true
+      }
+    ],
+    "ci": [
+      {
+        "repository": "magpie-doubao-work",
+        "commit": "608693528dd5245b041952afe882c789bb2cb17d",
+        "id": 45864013319,
+        "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/45864013319",
+        "status": "queued",
+        "conclusion": null,
+        "jobs": [
+          {
+            "name": "Tests (macos-15, Node 24)",
+            "status": "queued",
+            "conclusion": null
+          },
+          {
+            "name": "Browser (windows-2025, Bun 1.3.14)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (windows-2025, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Browser (windows-2025, Bun 1.4.5)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (windows-2025, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (macos-15, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "repository": "doubao-work-gateway",
+        "commit": "d08b756a1230d275d4c541ae31be4f36aa32e8ea",
+        "id": 45864036543,
+        "url": "https://github.com/3294798852/doubao-work-gateway/actions/runs/45864036543",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "name": "Browser (windows-2025, Bun 1.4.5)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (ubuntu-24.04, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (windows-2025, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (windows-2025, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (macos-15, Node 24)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Browser (windows-2025, Bun 1.3.14)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tests (macos-15, Node 22)",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
     "pending": [
       "Original remote device needs diagnostic capture",
-      "Initial concurrent Edge close timeout was not reproduced by later process traces and full-entry checks",
+      "Initial one-off Edge close timeout remains documented; current full-entry checks pass",
       "Manual account login on the remote device"
     ]
   }
