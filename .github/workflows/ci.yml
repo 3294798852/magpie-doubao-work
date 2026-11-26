@@ -27,3 +27,26 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm run check
       - run: npm test
+      - if: matrix.node == 24
+        run: node scripts/browser-smoke.mjs
+  browser-bun:
+    name: Browser (windows-2025, Bun ${{ matrix.bun }})
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        bun: [1.3.14, 1.4.5]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Test real Chrome and Edge with Bun
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'doubao-browser-bun.zip'
+          $runtime = Join-Path $env:RUNNER_TEMP 'doubao-browser-bun'
+          Invoke-WebRequest -Uri 'https://github.com/oven-sh/bun/releases/download/bun-v${{ matrix.bun }}/bun-windows-x64.zip' -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $runtime
+          & (Join-Path $runtime 'bun-windows-x64/bun.exe') scripts/browser-smoke.mjs
+          exit $LASTEXITCODE

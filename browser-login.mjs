@@ -1,12 +1,12 @@
 import {spawn} from 'node:child_process';
-import {access,mkdir,mkdtemp,chmod,rm} from 'node:fs/promises';
+import {access,mkdtemp,readFile,rename,rm} from 'node:fs/promises';
 import {constants} from 'node:fs';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
 import {homedir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {once} from 'node:events';
 import {browserCandidates} from './platform.mjs';
-import {ensurePrivateDir,securePrivate} from './private-files.mjs';
+import {ensurePrivateDir,securePrivate,writePrivate} from './private-files.mjs';
 
 const LOGIN_URL='https://www.doubao.com/chat/';
 const ACTIVE=new Set(['starting','waiting','awaiting_confirmation','importing']);
@@ -38,68 +38,164 @@ export function doubaoCookies(input,now=Date.now()/1000){
   return rows.some(c=>['sessionid','sessionid_ss'].includes(c.name)&&c.value.length>0)?rows:[];
 }
 export function browserArgs(profile){
-  return ['--remote-debugging-pipe','--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',LOGIN_URL];
+  return ['--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','--user-data-dir='+profile,
+    '--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',LOGIN_URL];
 }
 
-// CDP over inherited anonymous pipes (fd 3/4), not a listening debugging port.
-// Messages are UTF-8 JSON framed by NUL; protocol errors never include payload text.
-export class PipeClient {
-  constructor(input,output,{timeoutMs=7000,maxBytes=2*1024*1024}={}){
-    this.input=input;this.output=output;this.timeoutMs=timeoutMs;this.maxBytes=maxBytes;
-    this.pending=new Map();this.sequence=0;this.buffer=Buffer.alloc(0);this.closed=false;
-    output.on('data',chunk=>this.receive(chunk));
-    output.on('close',()=>this.close());output.on('error',()=>this.close());input.on('error',()=>this.close());
+// The browser owns a temporary loopback port. CDP uses ordinary WebSocket frames.
+export class DevToolsClient {
+  static async connect(url,{timeoutMs=7000,signal}={}){
+    signal?.throwIfAborted();
+    const socket=new WebSocket(url);
+    try{
+      await new Promise((resolve,reject)=>{
+        const finish=error=>{
+          clearTimeout(timer);
+          socket.removeEventListener('open',opened);socket.removeEventListener('error',failed);
+          socket.removeEventListener('close',failed);signal?.removeEventListener('abort',aborted);
+          if(error)reject(error);else resolve();
+        };
+        const opened=()=>finish(),failed=()=>finish(Error('浏览器登录通信连接失败。'));
+        const aborted=()=>finish(signal.reason);
+        const timer=setTimeout(()=>finish(Object.assign(Error('浏览器登录通信连接超时。'),{code:'DW_BROWSER_CONNECT_TIMEOUT'})),timeoutMs);
+        socket.addEventListener('open',opened,{once:true});socket.addEventListener('error',failed,{once:true});
+        socket.addEventListener('close',failed,{once:true});signal?.addEventListener('abort',aborted,{once:true});
+        if(signal?.aborted)aborted();
+      });
+      return new DevToolsClient(socket,{timeoutMs});
+    }catch(error){socket.close();throw error;}
   }
-  receive(chunk){
+  constructor(socket,{timeoutMs=7000,maxBytes=2*1024*1024}={}){
+    this.socket=socket;this.timeoutMs=timeoutMs;this.maxBytes=maxBytes;
+    this.pending=new Map();this.sequence=0;this.closed=false;
+    socket.addEventListener('message',event=>this.receive(event.data));
+    socket.addEventListener('close',()=>this.close());socket.addEventListener('error',()=>this.close());
+  }
+  receive(frame){
     if(this.closed)return;
-    this.buffer=Buffer.concat([this.buffer,chunk]);
-    if(this.buffer.length>this.maxBytes){this.close();return;}
-    let end;
-    while((end=this.buffer.indexOf(0))>=0){
-      const frame=this.buffer.subarray(0,end);this.buffer=this.buffer.subarray(end+1);
-      if(!frame.length)continue;
-      let data;try{data=JSON.parse(frame.toString('utf8'));}catch{this.close();return;}
-      if(!data||typeof data!=='object'||Array.isArray(data)){this.close();return;}
-      const waiter=this.pending.get(data.id);if(!waiter)continue;
-      clearTimeout(waiter.timeout);this.pending.delete(data.id);
-      if(data.error)waiter.reject(Error('浏览器登录通信失败。'));else waiter.resolve(data.result||{});
-    }
+    if(typeof frame!=='string'||Buffer.byteLength(frame)>this.maxBytes){this.close();return;}
+    let data;try{data=JSON.parse(frame);}catch{this.close();return;}
+    if(!data||typeof data!=='object'||Array.isArray(data)){this.close();return;}
+    const waiter=this.pending.get(data.id);if(!waiter)return;
+    clearTimeout(waiter.timeout);this.pending.delete(data.id);
+    if(data.error)waiter.reject(Error('浏览器登录通信失败。'));else waiter.resolve(data.result||{});
   }
   send(method,params={},sessionId){
-    if(this.closed)return Promise.reject(Error('浏览器登录窗口已断开。'));
+    if(this.closed)return Promise.reject(Object.assign(Error('浏览器登录窗口已断开。'),{code:'DW_BROWSER_DISCONNECTED'}));
     const id=++this.sequence;
     return new Promise((resolve,reject)=>{
-      const timeout=setTimeout(()=>{this.pending.delete(id);reject(Error('浏览器响应超时。'));},this.timeoutMs);timeout.unref?.();
+      const timeout=setTimeout(()=>{this.pending.delete(id);reject(Object.assign(Error('浏览器响应超时。'),{code:'DW_BROWSER_PROTOCOL_TIMEOUT'}));},this.timeoutMs);
       this.pending.set(id,{resolve,reject,timeout});
-      const packet=JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})})+'\0';
-      try{this.input.write(packet,error=>{if(error)this.close();});}catch{this.close();}
+      const packet=JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})});
+      try{this.socket.send(packet);}catch{this.close();}
     });
   }
   close(){
-    if(this.closed)return;this.closed=true;this.buffer=Buffer.alloc(0);
-    for(const w of this.pending.values()){clearTimeout(w.timeout);w.reject(Error('浏览器登录窗口已断开。'));}this.pending.clear();
-    this.input.destroy();this.output.destroy();
+    if(this.closed)return;this.closed=true;
+    for(const w of this.pending.values()){clearTimeout(w.timeout);w.reject(Object.assign(Error('浏览器登录窗口已断开。'),{code:'DW_BROWSER_DISCONNECTED'}));}this.pending.clear();
+    this.socket.close();
   }
 }
 
-export async function launchIsolatedBrowser(browser,profile,{spawnProcess=spawn}={}){
-  const child=spawnProcess(browser.path,browserArgs(profile),{stdio:['ignore','ignore','ignore','pipe','pipe'],shell:false,detached:false});
-  const client=new PipeClient(child.stdio[3],child.stdio[4]);
-  let exited=false;
-  const exit=new Promise(resolve=>{child.once('exit',()=>{exited=true;client.close();resolve();});child.once('error',()=>{exited=true;client.close();resolve();});});
+function startupFailure(browser,phase,started,{error,code,signal,stderr='',cleanupPending=false}={}){
+  const errorCode=typeof error?.code==='string'?error.code:'';
+  const causes={ENOENT:['DW_BROWSER_EXECUTABLE_MISSING','浏览器程序已移除，请重新选择有效的 Chrome / Edge 安装。'],
+    EACCES:['DW_BROWSER_EXECUTABLE_DENIED','系统拒绝启动浏览器，请检查浏览器程序的执行权限。'],
+    EPERM:['DW_BROWSER_EXECUTABLE_DENIED','系统拒绝启动浏览器，请检查浏览器程序的执行权限。']};
+  let [reason,message]=(phase==='spawn'?causes[errorCode]:undefined)||
+    [errorCode.startsWith('DW_BROWSER_')?errorCode:'DW_BROWSER_START_FAILED','浏览器登录窗口初始化失败。'];
+  if(/remote.?debugging.*(?:disallowed|disabled|not allowed|denied)/i.test(stderr))
+    [reason,message]=['DW_BROWSER_POLICY','浏览器管理策略禁止登录通信，请联系设备管理员检查 RemoteDebuggingAllowed。'];
+  else if(/Missing X server|no DISPLAY|cannot open display|failed to connect to.*Wayland/i.test(stderr))
+    [reason,message]=['DW_BROWSER_DISPLAY','浏览器无法连接图形桌面，请在可用的桌面会话中登录。'];
+  else if(Number.isInteger(code)||signal)
+    [reason,message]=['DW_BROWSER_EXITED','浏览器在登录通信建立前退出。'];
+  else if(reason==='DW_BROWSER_ENDPOINT_TIMEOUT')message='浏览器已启动，等待登录通信端点超时。';
+  else if(reason==='DW_BROWSER_ENDPOINT_INVALID')message='浏览器返回的登录通信端点格式有误。';
+  else if(reason==='DW_BROWSER_CONNECT_TIMEOUT'||reason==='DW_BROWSER_PROTOCOL_TIMEOUT')message='浏览器已启动，登录通信握手超时。';
+  else if(reason==='DW_BROWSER_DISCONNECTED')message='浏览器登录通信在初始化时断开。';
+  else if(reason==='DW_BROWSER_CLOSE_TIMEOUT')message='登录浏览器关闭等待超时，临时资料目录已保留。';
+  else if(phase==='endpoint'&&['EACCES','EPERM'].includes(errorCode))
+    [reason,message]=['DW_BROWSER_PROFILE_ACCESS','无法读取登录浏览器的临时资料目录，请检查当前用户的目录权限。'];
+  const diagnostic={code:reason,phase,platform:process.platform,runtime:process.versions.bun?'Bun '+process.versions.bun:'Node '+process.versions.node,
+    browser:browser?.id||'unknown',elapsedMs:Date.now()-started,...(Number.isInteger(code)?{exitCode:code}:{}),...(signal?{exitSignal:signal}:{}),
+    ...(/^[A-Z0-9_]{1,64}$/.test(errorCode)?{systemCode:errorCode}:{}),detail:String(error?.message||'').slice(0,2048),stderr};
+  return Object.assign(failure(503,message+'（'+[reason,diagnostic.platform,diagnostic.runtime,'阶段='+phase,
+    '耗时='+Math.round(diagnostic.elapsedMs/1000)+'秒',...(Number.isInteger(code)?['退出码='+code]:[])].join('，')+'）'),
+    {type:'browser_start_failed',diagnostic,cleanupPending});
+}
+
+async function saveStartupDiagnostic(file,diagnostic,profile){
+  const redact=value=>{
+    let text=value||'';
+    if(profile)text=text.split(profile).join('<login-profile>');
+    return text.split(homedir()).join('<home>').replace(/(?:https?|wss?):\/\/[^\s]+/g,'<browser-url>');
+  };
+  const record={...diagnostic,at:new Date().toISOString(),stderr:redact(diagnostic.stderr),detail:redact(diagnostic.detail)};
+  await ensurePrivateDir(dirname(file));
+  const temporary=file+'.'+randomUUID()+'.tmp';
+  try{await writePrivate(temporary,JSON.stringify(record,null,2)+'\n');await rename(temporary,file);}
+  catch(error){await rm(temporary,{force:true}).catch(()=>{});throw error;}
+}
+
+export async function launchIsolatedBrowser(browser,profile,{spawnProcess=spawn,connect=DevToolsClient.connect,
+  startupTimeoutMs=30000,signal}={}){
+  signal?.throwIfAborted();
+  const started=Date.now(),stopped=new AbortController();
+  let child,client,exited=false,exitCode,exitSignal,spawnError,stderr='',phase='spawn';
+  const captureStderr=chunk=>{stderr=(stderr+chunk.toString()).slice(-8192);};
+  const requestSignal=signal?AbortSignal.any([signal,stopped.signal]):stopped.signal;
   let attachment=null,version;
+  let resolveExit;
+  const exit=new Promise(resolve=>{resolveExit=resolve;});
+  const onExit=(code,signal,error)=>{
+    exited=true;exitCode=code;exitSignal=signal;spawnError=error;
+    stopped.abort(Error('浏览器进程已退出。'));client?.close();resolveExit();
+  };
+  const abortStartup=()=>client?.close();
+  requestSignal.addEventListener('abort',abortStartup,{once:true});
   async function dispose(){
-    if(!exited&&!client.closed)await Promise.race([client.send('Browser.close').catch(()=>{}),pause(700)]);
+    if(!child)return;
+    const closing=Date.now();
+    if(!exited&&client&&!client.closed)await Promise.race([client.send('Browser.close').catch(()=>{}),pause(700)]);
     if(!exited)await Promise.race([exit,pause(1200)]);
     if(!exited){child.kill('SIGTERM');await Promise.race([exit,pause(1200)]);}
     if(!exited){child.kill('SIGKILL');await Promise.race([exit,pause(1200)]);}
-    client.close();
-    if(!exited)throw Error('临时登录窗口仍在关闭，请稍后再试。');
+    client?.close();
+    if(!exited)throw startupFailure(browser,'close',closing,{error:{code:'DW_BROWSER_CLOSE_TIMEOUT'},code:child.exitCode,signal:child.signalCode});
   }
   try{
-    await Promise.race([once(child,'spawn'),exit.then(()=>{throw Error('浏览器启动失败。');})]);
+    child=spawnProcess(browser.path,browserArgs(profile),{stdio:['ignore','ignore','pipe'],shell:false,detached:false,windowsHide:true});
+    child.once('exit',(code,signal)=>onExit(code,signal));child.once('error',error=>onExit(null,null,error));
+    child.stderr?.on('data',captureStderr);
+    await Promise.race([once(child,'spawn',{signal:requestSignal}),exit.then(()=>{throw Error('浏览器启动失败。');})]);
+    phase='endpoint';
+    let endpoint,invalid=false;
+    while(!endpoint){
+      requestSignal.throwIfAborted();
+      try{
+        const raw=await readFile(join(profile,'DevToolsActivePort'),'utf8');
+        const [port,path]=raw.trim().split(/\r?\n/);
+        if(/^\d+$/.test(port)&&Number(port)>0&&Number(port)<=65535&&/^\/devtools\/browser\/[A-Za-z0-9-]+$/.test(path))
+          endpoint='ws://127.0.0.1:'+port+path;
+        else invalid=true;
+      }catch(error){if(!['ENOENT','EBUSY'].includes(error.code))throw error;}
+      if(endpoint)break;
+      if(Date.now()-started>=startupTimeoutMs)throw Object.assign(Error('Browser endpoint unavailable'),
+        {code:invalid?'DW_BROWSER_ENDPOINT_INVALID':'DW_BROWSER_ENDPOINT_TIMEOUT'});
+      await new Promise(resolve=>{const timer=setTimeout(done,50);function done(){clearTimeout(timer);requestSignal.removeEventListener('abort',done);resolve();}requestSignal.addEventListener('abort',done,{once:true});});
+    }
+    phase='connect';
+    client=await connect(endpoint,{signal:requestSignal});
+    requestSignal.throwIfAborted();
+    phase='protocol';
     version=await client.send('Browser.getVersion');
-  }catch{await dispose();throw failure(503,'浏览器启动失败，请检查 Chrome / Edge 安装，或在工作台导入账号 JSON。');}
+  }catch(error){
+    const failure=startupFailure(browser,phase,started,{error:spawnError||error,code:exitCode,signal:exitSignal,stderr});
+    try{await dispose();}catch{failure.cleanupPending=true;}
+    signal?.throwIfAborted();throw failure;
+  }finally{requestSignal.removeEventListener('abort',abortStartup);}
+  child.stderr?.removeListener('data',captureStderr);child.stderr?.resume();stderr='';
   return {
     metadata(){
       return {userAgent:version.userAgent,chromiumVersion:/Chrom(?:e|ium)\/([\d.]+)/.exec(version.userAgent||'')?.[1]};
@@ -124,17 +220,28 @@ export async function launchIsolatedBrowser(browser,profile,{spawnProcess=spawn}
 
 // One active login per panel; no arbitrary executable, URL, profile or callback input.
 export class BrowserLogin {
-  constructor({tmpRoot,importAccount,discover=availableBrowsers,launch=launchIsolatedBrowser,pollMs=2000,ttlMs=10*60_000,now=Date.now}){
+  constructor({tmpRoot,importAccount,discover=availableBrowsers,launch=launchIsolatedBrowser,pollMs=2000,ttlMs=10*60_000,now=Date.now,
+    diagnosticFile=join(tmpRoot,'browser-startup-error.json')}){
     this.tmpRoot=tmpRoot;this.importAccount=importAccount;this.discover=discover;this.launch=launch;this.pollMs=pollMs;this.ttlMs=ttlMs;this.now=now;
     this.current=null;this.disposed=false;this.state={id:'',state:'idle',message:'在浏览器完成登录后，将自动接入本机网关。',browserName:'',startedAt:0,expiresAt:0};
+    this.diagnosticFile=diagnosticFile;
   }
   status(){return {...this.state,active:ACTIVE.has(this.state.state)||this.current!==null};}
   async options(){return (await this.discover()).map(({id,name})=>({id,name}));}
   update(session,state,message,extra={}){if(this.current===session)this.state={...this.state,state,message,...extra};}
+  async diagnose(session,error){
+    const diagnostic={...error.diagnostic};let message=error.message;
+    try{
+      await saveStartupDiagnostic(this.diagnosticFile,diagnostic,session.profile);
+      diagnostic.file=this.diagnosticFile;message+=' 启动诊断已保存到 '+this.diagnosticFile;
+    }catch{diagnostic.saved=false;}
+    delete diagnostic.stderr;delete diagnostic.detail;
+    return {message,diagnostic};
+  }
   async start(browserId,context={}){
     if(this.disposed)throw failure(503,'登录服务正在停止。');
     if(this.current){if((this.current.context.destination||'local')!==(context.destination||'local')||this.current.context.expectedId!==context.expectedId||!!this.current.context.manual!==!!context.manual)throw failure(409,'已有另一种保存目标的登录会话，请先完成或取消它。');return this.status();}
-    const session={context,id:randomUUID(),cancelled:false,timer:null,handle:null,profile:null,finishing:null,busy:false,stable:'',ready:null};
+    const session={context,id:randomUUID(),cancelled:false,abort:new AbortController(),timer:null,handle:null,profile:null,finishing:null,busy:false,stable:'',ready:null};
     this.current=session;const startedAt=this.now();
     this.state={id:session.id,destination:context.destination||'local',state:'starting',message:'正在准备独立浏览器会话…',browserName:'',startedAt,expiresAt:startedAt+this.ttlMs};
     session.ready=this.prepare(session,browserId);
@@ -142,21 +249,31 @@ export class BrowserLogin {
     return this.status();
   }
   async prepare(session,browserId){
+    const started=Date.now();let browser,phase='discovery';
     try{
       const browsers=await this.discover();
-      const browser=browserId===undefined?browsers[0]:browsers.find(b=>b.id===browserId);
+      browser=browserId===undefined?browsers[0]:browsers.find(b=>b.id===browserId);
       if(!browser)throw failure(409,'未找到所选浏览器。请安装 Chrome / Edge，或在工作台导入账号 JSON。');
       if(session.cancelled)return;
       this.state.browserName=browser.name;
+      phase='profile';
       await ensurePrivateDir(this.tmpRoot);
       session.profile=await mkdtemp(join(this.tmpRoot,'doubao-login-'));await securePrivate(session.profile,{directory:true});
       if(session.cancelled)return;
-      session.handle=await this.launch(browser,session.profile);
+      phase='spawn';
+      session.handle=await this.launch(browser,session.profile,{signal:session.abort.signal});
       if(session.cancelled)return;
       this.update(session,'waiting','请在新打开的 '+browser.name+' 窗口登录豆包。完成后会自动接入，无需复制 Cookie。');
       this.schedule(session);
     }catch(error){
-      this.update(session,'error',error.status?error.message:'浏览器登录启动失败，请检查浏览器与图形桌面环境。');
+      if(!session.cancelled){
+        const failure=error.diagnostic?error:startupFailure(browser,phase,started,{error});
+        if(!browser)failure.diagnostic.code='DW_BROWSER_NOT_FOUND';
+        session.cleanupPending=failure.cleanupPending===true;
+        if(error.status&&!error.diagnostic)failure.message=error.message+'（'+failure.diagnostic.code+'，'+failure.diagnostic.runtime+'）';
+        const result=await this.diagnose(session,failure);
+        if(!session.cancelled)this.update(session,'error',result.message,{diagnostic:result.diagnostic});
+      }
       await this.finish(session);
     }finally{
       if(session.cancelled)await this.finish(session);
@@ -197,10 +314,14 @@ export class BrowserLogin {
     if(session.finishing)return session.finishing;
     clearTimeout(session.timer);session.stable='';
     session.finishing=(async()=>{
-      let closed=true;
-      if(session.handle)try{await session.handle.dispose();}catch{closed=false;}
+      let closed=!session.cleanupPending,closeError;
+      if(session.handle)try{await session.handle.dispose();}catch(error){closed=false;closeError=error;}
       if(session.profile&&closed)await rm(session.profile,{recursive:true,force:true}).catch(()=>{closed=false;});
-      if(!closed&&this.current===session)this.state={...this.state,message:this.state.message+' 临时会话清理未完成，请关闭专用窗口后检查。',cleanupPending:true};
+      if(!closed&&this.current===session){
+        const result=closeError?.diagnostic?await this.diagnose(session,closeError):null;
+        this.state={...this.state,message:this.state.message+' '+(result?.message||'临时会话清理未完成，请关闭专用窗口后检查。'),
+          cleanupPending:true,...(result?{diagnostic:result.diagnostic}:{})};
+      }
       if(this.current===session)this.current=null;
     })();
     return session.finishing;
@@ -216,6 +337,7 @@ export class BrowserLogin {
     const session=this.current;if(!session)return this.status();
     if(this.state.state==='importing'&&!shutdown)throw failure(409,'账号正在核验，请等待本次结果后再关闭。');
     session.cancelled=true;clearTimeout(session.timer);
+    session.abort.abort(Error('本次浏览器登录已取消。'));
     this.update(session,'cancelled','本次浏览器登录已取消，已有账号不受影响。');
     await session.ready;
     await this.finish(session);

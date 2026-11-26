@@ -1,10 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {PassThrough} from 'node:stream';
 import {mkdtemp,stat,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {BrowserLogin,PipeClient,doubaoCookies,isDoubaoPage,browserArgs,availableBrowsers} from '../browser-login.mjs';
+import {BrowserLogin,DevToolsClient,doubaoCookies,isDoubaoPage,browserArgs,availableBrowsers} from '../browser-login.mjs';
 const cookie={name:'sessionid',value:'FIXTURE_SESSION',domain:'.doubao.com',path:'/',expires:-1};
 import {assertPrivate} from '../private-files.mjs';
 const options=[{id:'chrome',name:'Google Chrome',path:'/fixture/chrome'}];
@@ -26,22 +25,29 @@ test('只接受豆包 HTTPS 页面与根路径 Cookie',()=>{
  assert.deepEqual(doubaoCookies([{...cookie,httpOnly:true,secure:true,secret:'discard'}]),[{name:cookie.name,value:cookie.value,domain:cookie.domain,path:'/'}]);
  assert.deepEqual(doubaoCookies(Array.from({length:201},()=>cookie)),[]);
 });
-test('临时资料目录与匿名管道，无调试监听端口或沙箱关闭参数',async()=>{
- const args=browserArgs('/tmp/fixture');assert(args.includes('--remote-debugging-pipe'));
- assert(args.includes('--user-data-dir=/tmp/fixture'));assert(!args.some(a=>/remote-debugging-port|no-sandbox|disable-web-security/.test(a)));
+test('临时资料目录与浏览器分配的回环端口，保留浏览器沙箱',async()=>{
+ const args=browserArgs('/tmp/fixture');assert(args.includes('--remote-debugging-port=0'));
+ assert(args.includes('--remote-debugging-address=127.0.0.1'));
+ assert(args.includes('--user-data-dir=/tmp/fixture'));assert(!args.some(a=>/remote-debugging-pipe|no-sandbox|disable-web-security/.test(a)));
  assert.deepEqual(await availableBrowsers('fixture'),[]);
 });
-test('管道按 NUL 分帧，支持分片中文响应，过滤远端错误详情',async()=>{
- const input=new PassThrough(),output=new PassThrough(),client=new PipeClient(input,output);
- const p=client.send('Fixture.method',{},'session-fixture');const packet=input.read().toString();assert(packet.endsWith('\0'));assert.equal(JSON.parse(packet.slice(0,-1)).sessionId,'session-fixture');
- const response=Buffer.from(JSON.stringify({id:1,result:{name:'中文测试'}})+'\0');
- for(const byte of response)output.write(Buffer.from([byte]));assert.deepEqual(await p,{name:'中文测试'});
- const q=client.send('Fixture.error');input.read();output.write(JSON.stringify({id:2,error:{message:'SENSITIVE'}})+'\0');await assert.rejects(q,e=>!e.message.includes('SENSITIVE'));client.close();
+class FixtureSocket extends EventTarget {
+ constructor(){super();this.sent=[];}
+ send(value){this.sent.push(JSON.parse(value));}
+ receive(value){this.dispatchEvent(new MessageEvent('message',{data:value}));}
+ close(){this.closed=true;}
+}
+test('WebSocket 按请求 ID 关联中文响应，过滤远端错误详情',async()=>{
+ const socket=new FixtureSocket(),client=new DevToolsClient(socket);
+ const p=client.send('Fixture.method',{},'session-fixture');assert.equal(socket.sent[0].sessionId,'session-fixture');
+ socket.receive(JSON.stringify({id:1,result:{name:'中文测试'}}));assert.deepEqual(await p,{name:'中文测试'});
+ const q=client.send('Fixture.error');socket.receive(JSON.stringify({id:2,error:{message:'SENSITIVE'}}));
+ await assert.rejects(q,e=>!e.message.includes('SENSITIVE'));client.close();
 });
-test('畸形和超大管道消息关闭连接且不展示载荷',async()=>{
- for(const frame of ['null\0','[]\0','invalid-json\0','x'.repeat(40)]){
-  const input=new PassThrough(),output=new PassThrough(),client=new PipeClient(input,output,{maxBytes:30});
-  const p=client.send('Fixture.test');input.read();output.write(frame);await assert.rejects(p,/已断开/);assert(client.closed);
+test('畸形和超大协议消息关闭连接且不展示载荷',async()=>{
+ for(const frame of ['null','[]','invalid-json','x'.repeat(40)]){
+  const socket=new FixtureSocket(),client=new DevToolsClient(socket,{maxBytes:30});
+  const p=client.send('Fixture.test');socket.receive(frame);await assert.rejects(p,/已断开/);assert(client.closed);
  }
 });
 test('浏览器登录单实例；稳定会话只接入一次；清理临时资料',async()=>{
@@ -87,9 +93,9 @@ test('启动中取消会等待资源就绪再清理；核验时避免误取消',
 });
 test('未安装浏览器、非法选择、启动失败都有明确结果',async()=>{
  for(const settings of [{discover:async()=>[]},{launch:async()=>{throw Error('SENSITIVE');}}]){
-  const f=await setup(settings);try{await f.login.start();assert.equal(f.login.status().state,'error');assert(!JSON.stringify(f.login.status()).includes('SENSITIVE'));assert.deepEqual(await readdir(f.root),[]);}finally{await f.done();}
+  const f=await setup(settings);try{await f.login.start();assert.equal(f.login.status().state,'error');assert(!JSON.stringify(f.login.status()).includes('SENSITIVE'));assert.deepEqual((await readdir(f.root)).filter(name=>name.startsWith('doubao-login-')),[]);}finally{await f.done();}
  }
- const f=await setup();try{await f.login.start('/arbitrary/executable');assert.equal(f.login.status().state,'error');assert.deepEqual(await readdir(f.root),[]);}finally{await f.done();}
+ const f=await setup();try{await f.login.start('/arbitrary/executable');assert.equal(f.login.status().state,'error');assert.deepEqual((await readdir(f.root)).filter(name=>name.startsWith('doubao-login-')),[]);}finally{await f.done();}
 });
 test('云端登录上下文传入接入回调，成功状态与失败状态均脱敏',async()=>{
  let calls=0;const f=await setup({importAccount:async(_cookies,context)=>{calls++;assert.deepEqual(context,{destination:'cloud'});return {name:'测试账号',updated:false,cloudSynced:true,cloudOrigin:'https://cloud.example.test'};}});

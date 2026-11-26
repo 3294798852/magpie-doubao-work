@@ -1,6 +1,6 @@
 {
-  "date": "2026-11-14",
-  "version": "0.6.3",
+  "date": "2026-11-27",
+  "version": "0.6.4",
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
   "local": {
@@ -564,5 +564,103 @@
       "finish": "stop",
       "passed": true
     }
+  },
+  "browserStartup": {
+    "date": "2026-11-27",
+    "version": "0.6.4",
+    "reproduced": {
+      "os": "Windows",
+      "runtime": "Bun 1.3.14",
+      "browser": "Chrome 158",
+      "old": "Original 503 sign-in error after pipe handshake timeout",
+      "new": "Passed loopback WebSocket handshake"
+    },
+    "realLoginEntry": [
+      {
+        "platform": "win32",
+        "runtime": "Node 24.18.0",
+        "browser": "chrome",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 2093,
+        "passed": true
+      },
+      {
+        "platform": "win32",
+        "runtime": "Node 24.18.0",
+        "browser": "edge",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 3452,
+        "passed": true
+      },
+      {
+        "platform": "win32",
+        "runtime": "Bun 1.3.14",
+        "browser": "chrome",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 2085,
+        "passed": true
+      },
+      {
+        "platform": "win32",
+        "runtime": "Bun 1.3.14",
+        "browser": "edge",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 3482,
+        "passed": true
+      },
+      {
+        "platform": "win32",
+        "runtime": "Bun 1.4.5",
+        "browser": "chrome",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 2145,
+        "passed": true
+      },
+      {
+        "platform": "win32",
+        "runtime": "Bun 1.4.5",
+        "browser": "edge",
+        "chromiumVersion": "158.0.0.0",
+        "transport": "loopback-websocket",
+        "entry": "browserSignIn",
+        "cancelledAndCleaned": true,
+        "elapsedMs": 3480,
+        "passed": true
+      }
+    ],
+    "host": {
+      "magpie": "0.1.4676",
+      "bun": "1.4.5",
+      "result": "passed"
+    },
+    "localFullSuiteBaseline": {
+      "plugin": 79,
+      "gateway": 127
+    },
+    "affectedRecheck": 21,
+    "currentTestCounts": {
+      "plugin": 81,
+      "gateway": 129
+    },
+    "pending": [
+      "Original remote device needs diagnostic capture",
+      "Initial concurrent Edge close timeout was not reproduced by later process traces and full-entry checks",
+      "Manual account login on the remote device"
+    ]
   }
 }

@@ -1,5 +1,5 @@
 import {mkdtemp,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
+import {tmpdir,homedir} from 'node:os';
 import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {BrowserLogin} from '../browser-login.mjs';
@@ -11,7 +11,8 @@ export async function browserSignIn(signIn, {signal, browserOptions = {}} = {}) 
   let login, result;
   try {
     await securePrivate(root,{directory:true});
-    login = new BrowserLogin({...browserOptions, tmpRoot:root,
+    login = new BrowserLogin({diagnosticFile:join(homedir(),'.cache','doubao-work','magpie-browser-startup.json'),
+      ...browserOptions, tmpRoot:root,
       async importAccount(cookies,_context,metadata) {
         result = await signIn({cookies,...metadata,clientProfile:'web'},{signal});
         return {name:result.name,updated:false};

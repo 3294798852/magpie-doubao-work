@@ -36,6 +36,8 @@ The repository description, README, GitHub topics and package keywords carry bil
 
 A graphical desktop needs Chrome or Edge. Chromium is supported on Linux. Sign-in opens a dedicated temporary browser session. After you complete the official login, the plugin verifies the account identity and lets Magpie store it.
 
+Version 0.6.4 uses a temporary browser-owned loopback endpoint for login communication, including older Windows Bun runtimes. Startup failures report their stage and code, with the latest private diagnostic saved to `~/.cache/doubao-work/magpie-browser-startup.json`. See the [startup investigation and validation scope](docs/browser-startup.md).
+
 On headless Linux, export an account JSON from version 0.5.2 or later of the [standalone Doubao Work gateway](https://github.com/3294798852/doubao-work-gateway), then use Magpie's account import entry. Magpie versions supporting provider-account imports also accept this command.
 
 ```sh
