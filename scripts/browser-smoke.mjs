@@ -1,5 +1,5 @@
 // Real browser startup smoke uses a blank page and a dedicated temporary profile.
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir,homedir} from 'node:os';
 import {join} from 'node:path';
 import {spawn} from 'node:child_process';
@@ -22,8 +22,12 @@ for(const browser of browsers){
      metadata=handle.metadata();
      if(!metadata.userAgent||!metadata.chromiumVersion)throw Error('浏览器元数据不完整。');
      setTimeout(()=>abort.abort(),100);return handle;
-    }}}),error=>error===abort.signal.reason||error.name==='AbortError');
+    }}}).then(result=>{throw Error('Browser sign-in returned '+JSON.stringify(result));}),
+   error=>error===abort.signal.reason||error.name==='AbortError');
   await assert.rejects(access(profile),error=>error.code==='ENOENT');
+ }catch(error){
+  try{console.error(JSON.stringify({browser:browser.id,diagnostic:JSON.parse(await readFile(join(root,'browser-startup-error.json'),'utf8'))}));}catch{}
+  throw error;
  }finally{await rm(root,{recursive:true,force:true});}
  console.log(JSON.stringify({platform:process.platform,runtime:process.versions.bun?'Bun '+process.versions.bun:'Node '+process.versions.node,
   browser:browser.id,chromiumVersion:metadata.chromiumVersion,transport:'loopback-websocket',entry:'browserSignIn',
