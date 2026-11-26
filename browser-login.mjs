@@ -5,6 +5,7 @@ import {join,dirname} from 'node:path';
 import {homedir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {once} from 'node:events';
+import {request as httpRequest} from 'node:http';
 import {browserCandidates} from './platform.mjs';
 import {ensurePrivateDir,securePrivate,writePrivate} from './private-files.mjs';
 
@@ -42,11 +43,29 @@ export function browserArgs(profile){
     '--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',LOGIN_URL];
 }
 
+// Give Node's WebSocket a direct localhost HTTP upgrade, independent of env proxies.
+const browserDispatcher={
+  dispatch(options,handler){
+    const headers={Connection:'Upgrade',Upgrade:'websocket'};
+    if(Array.isArray(options.headers)){
+      for(let at=0;at<options.headers.length;at+=2)headers[options.headers[at]]=options.headers[at+1];
+    }else Object.assign(headers,options.headers);
+    const request=httpRequest(new URL(options.path,options.origin),{method:options.method,headers,agent:false});
+    request.once('upgrade',(response,socket,head)=>{
+      if(head.length)socket.unshift(head);
+      handler.onUpgrade(response.statusCode,response.rawHeaders,socket);
+    });
+    request.once('response',response=>{response.destroy();request.destroy(Error('浏览器通信升级失败，HTTP '+response.statusCode));});
+    request.once('error',error=>handler.onError(error));
+    handler.onConnect(error=>request.destroy(error));request.end();return true;
+  },
+};
+
 // The browser owns a temporary loopback port. CDP uses ordinary WebSocket frames.
 export class DevToolsClient {
   static async connect(url,{timeoutMs=7000,signal}={}){
     signal?.throwIfAborted();
-    const socket=new WebSocket(url);
+    const socket=new WebSocket(url,{dispatcher:browserDispatcher});
     try{
       await new Promise((resolve,reject)=>{
         const finish=error=>{

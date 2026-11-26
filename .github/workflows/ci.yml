@@ -28,12 +28,17 @@ jobs:
       - run: npm run check
       - run: npm test
       - name: Restore installed Edge sandbox permissions
-        if: runner.os == 'Linux' && matrix.node == 24
+        if: runner.os == 'Linux'
         run: |
           sudo chown root:root /opt/microsoft/msedge/msedge-sandbox
           sudo chmod 4755 /opt/microsoft/msedge/msedge-sandbox
-      - if: matrix.node == 24
-        run: node scripts/browser-smoke.mjs
+      - run: node scripts/browser-smoke.mjs
+        env:
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          ALL_PROXY: http://127.0.0.1:9
+          NO_PROXY: ''
+          NODE_USE_ENV_PROXY: '1'
   browser-bun:
     name: Browser (windows-2025, Bun ${{ matrix.bun }})
     runs-on: windows-2025
@@ -53,5 +58,9 @@ jobs:
           $runtime = Join-Path $env:RUNNER_TEMP 'doubao-browser-bun'
           Invoke-WebRequest -Uri 'https://github.com/oven-sh/bun/releases/download/bun-v${{ matrix.bun }}/bun-windows-x64.zip' -OutFile $archive
           Expand-Archive -LiteralPath $archive -DestinationPath $runtime
+          $env:HTTP_PROXY = 'http://127.0.0.1:9'
+          $env:HTTPS_PROXY = 'http://127.0.0.1:9'
+          $env:NO_PROXY = ''
+          $env:NODE_USE_ENV_PROXY = '1'
           & (Join-Path $runtime 'bun-windows-x64/bun.exe') scripts/browser-smoke.mjs
           exit $LASTEXITCODE
