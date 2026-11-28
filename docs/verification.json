@@ -1,6 +1,33 @@
 {
-  "date": "2026-11-27",
-  "version": "0.6.4",
+  "date": "2026-11-28",
+  "version": "0.6.5",
+  "browserHandoff": {
+    "previousVersion": {
+      "runtime": "Windows Bun 1.4.5",
+      "launcherExitCode": 0,
+      "startupError": "DW_BROWSER_EXITED",
+      "cleanupError": "EBUSY"
+    },
+    "localHost": {
+      "magpie": "0.1.4676",
+      "bun": "1.4.5",
+      "realChrome": true,
+      "launcherExitCode": 0,
+      "unicodeAndSpacedProfile": true,
+      "cancelledAndCleaned": true
+    },
+    "pluginCI": {
+      "codeCommit": "acfff361e77bd5cf34c7a52abe75a3484c68bdb5",
+      "url": "https://github.com/3294798852/magpie-doubao-work/actions/runs/46138614193",
+      "passed": 8
+    },
+    "gatewayCI": {
+      "codeCommit": "321375925b5880b2af69ab7af63f98f1cfb4dccf",
+      "url": "https://github.com/3294798852/doubao-work-gateway/actions/runs/46138614072",
+      "passed": 8
+    },
+    "pending": "The original reporter's machine and manual account sign-in remain to be tested."
+  },
   "source": "3294798852/doubao-work-gateway@v0.5.0",
   "hostBaseline": "11ab58c5874268d2607ff43f6ce13abb366c518b",
   "local": {

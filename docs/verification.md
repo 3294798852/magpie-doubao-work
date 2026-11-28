@@ -1,6 +1,12 @@
 # 独立插件验证记录 / Standalone plugin verification
 
-验证日期为 2026-11-27，当前版本为 0.6.4。
+验证日期为 2026-11-28，当前版本为 0.6.5。
+
+## 0.6.5 Windows 浏览器进程接手
+
+Windows Bun 1.4.5 对照复现启动进程以 0 退出、真实 Chrome 仍占用目录的场景。旧版返回 `DW_BROWSER_EXITED` 并在删除资料目录时收到 `EBUSY`。新版通过延迟出现的专用端点完成握手，取消后浏览器正常退出，资料目录被删除。本机 Magpie 0.1.4676 的实际宿主通过授权、回调及取消，覆盖带空格和中文的临时路径。原反馈机器及账号登录待现场复测。[排查与修复记录](browser-startup.md)
+
+两仓库各八项 CI 全部通过。Windows Chrome/Edge 覆盖常规启动和 Chromium 进程接手，Linux 与 macOS 回归共用登录入口。[插件 CI](https://github.com/3294798852/magpie-doubao-work/actions/runs/46138614193) · [网关 CI](https://github.com/3294798852/doubao-work-gateway/actions/runs/46138614072)
 
 ## 0.6.4 浏览器启动通信与诊断
 
