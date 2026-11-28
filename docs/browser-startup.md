@@ -10,7 +10,7 @@ Windows Chromium 允许启动进程将工作交给另一进程。例如从提升
 
 现在 Windows 的启动进程正常退出后，插件在原有 30 秒启动窗口内继续等待专用目录中的端点。进入等待登录前需完成回环 WebSocket 和 `Browser.getVersion`。关闭时使用已连接的专用浏览器；启动中取消时也会尝试关闭随后出现的端点。无法确认窗口已关闭时保留资料目录。非正常退出仍会快速报告。该流程保留原有的临时资料目录和沙箱。
 
-诊断文件路径见下方。首个故障留在顶层，后续关闭或删除异常留在 `cleanup` 中。`launcherExitAfterMs`、`cleanLauncherExit` 和 `endpointState` 用于判断何时发生退出以及端点状态。`profile` 只记录几个启动文件是否存在。Windows 进程的有限启动日志保存在 `browserLog`，与 `stderr` 一起脱敏，浏览器日志文件位于专用临时目录。遇到已识别的管理策略阻止或专用目录被替换时会显示相应错误。
+诊断文件路径见下方。首个故障留在顶层，后续关闭或删除异常留在 `cleanup` 中。`launcherExitAfterMs`、`cleanLauncherExit` 和 `endpointState` 用于判断何时发生退出以及端点状态。`profile` 只记录几个启动文件是否存在。Windows 启动日志尾部保存在 `browserLog`，与 `stderr` 一起脱敏，浏览器日志文件位于专用临时目录。Chrome 无法确认使用了独立目录时，可能拒绝启动端点。已取得对应浏览器输出时，诊断标记为 `DW_BROWSER_PROFILE_UNVERIFIED`。
 
 真实浏览器回归包含正常 Chrome/Edge 启动、进程接手、取消和目录清理。独立用例覆盖无端点时的启动截止时间、等待中取消及两阶段诊断留存。测试使用空白页，原反馈设备的界面启动及实际账号登录待验收。
 
@@ -84,5 +84,7 @@ Windows Chromium 允许启动进程将工作交给另一进程。例如从提升
 网关与插件各八项检查全部通过。插件 macOS Node 24 首次因运行器容量不足取消，单项补跑后通过。本机已安装 0.6.4，已安装包通过真实宿主回归及 Chrome/Edge 的启动、等待、取消和资料清理。
 
 ## English
+
+Version 0.6.5 follows the dedicated Windows browser endpoint when the launcher exits normally before the endpoint is ready. It closes the browser through the same dedicated connection and preserves startup and cleanup failures in one diagnostic. Windows tests reproduced the launcher exit and profile lock with a controlled handoff to a real Chrome process. The original reporter's machine still needs to run the updated sign-in flow.
 
 Version 0.6.4 uses the browser's temporary loopback WebSocket endpoint for the shared login flow. The old Windows Bun pipe failure was reproduced under Bun 1.3.14 and repaired through this path. Real Chrome and Edge startup, metadata, cancellation and cleanup passed under Node 24 and Bun 1.3.14 / 1.4.5. Startup failures now retain stage, runtime, exit information and a private diagnostic file. The original remote device's cause remains pending a new diagnostic capture.

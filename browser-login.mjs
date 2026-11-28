@@ -144,7 +144,7 @@ function startupFailure(browser,phase,started,{error,code,signal,stderr='',brows
   if(/remote.?debugging.*(?:disallowed|disabled|not allowed|denied)/i.test(log))
     [reason,message]=['DW_BROWSER_POLICY','浏览器管理策略禁止登录通信，请联系设备管理员检查 RemoteDebuggingAllowed。'];
   else if(/remote debugging requires a non-default data directory/i.test(log))
-    [reason,message]=['DW_BROWSER_PROFILE_OVERRIDE','浏览器未使用专用资料目录，请检查浏览器的 UserDataDir 管理策略和目录权限。'];
+    [reason,message]=['DW_BROWSER_PROFILE_UNVERIFIED','浏览器无法确认专用资料目录独立，因而关闭了登录通信。请检查系统用户目录和浏览器 UserDataDir 策略。'];
   else if(/Missing X server|no DISPLAY|cannot open display|failed to connect to.*Wayland/i.test(log))
     [reason,message]=['DW_BROWSER_DISPLAY','浏览器无法连接图形桌面，请在可用的桌面会话中登录。'];
   else if(/SUID sandbox.*not configured correctly|No usable sandbox|Running as root without --no-sandbox/i.test(log))
