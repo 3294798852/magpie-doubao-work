@@ -130,3 +130,36 @@ test('工具 JSON 等待期间取消请求会关闭上游，保持原始取消�
   await assert.rejects(pending,error=>error===reason);
   assert.equal(cancelled,true);
 });
+
+test('工具调用被 Markdown 代码块包裹时仍解析为 tool_calls',()=>{
+  const turn=createToolTurn(parseChat(input));
+  const expected=[{name:'read',arguments:{path:'file.txt'}}];
+  const raw=wire(turn,expected);
+  for(const text of [
+    '```json\n'+raw+'\n```',
+    '```\n'+raw+'\n```',
+    '好的，我来读取。\n```json\n'+raw+'\n```\n完成后继续。',
+  ]){
+    const result=turn.parse(text).tool_calls;
+    assert.equal(result.length,1);
+    assert.equal(result[0].function.name,'read');
+    assert.deepEqual(JSON.parse(result[0].function.arguments),expected[0].arguments);
+  }
+});
+
+test('工具调用前后带说明文字或回显示例时取最后一个有效调用',()=>{
+  const turn=createToolTurn(parseChat(input));
+  const echoed='示例：'+wire(turn,[{name:'read',arguments:{}}]);
+  const actual=wire(turn,[{name:'read',arguments:{path:'actual.txt'}}]);
+  const result=turn.parse(echoed+'\n现在执行：\n'+actual+'\n完成。').tool_calls;
+  assert.equal(result.length,1);
+  assert.deepEqual(JSON.parse(result[0].function.arguments),{path:'actual.txt'});
+});
+
+test('容错解析只接受完整 JSON，marker 文本与普通文本的原有错误语义不变',()=>{
+  const turn=createToolTurn(parseChat(input));
+  assert.throws(()=>turn.parse('```json\n{"'+marker(turn)+'":['+'\n```'),error=>error.type==='invalid_tool_call');
+  assert.throws(()=>turn.parse('我来读取。'+marker(turn)),error=>error.type==='invalid_tool_call');
+  const required=createToolTurn(parseChat({...input,tool_choice:'required'}));
+  assert.throws(()=>required.parse('普通文本'),error=>error.type==='invalid_tool_call');
+});
