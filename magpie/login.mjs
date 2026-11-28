@@ -9,6 +9,7 @@ import {securePrivate} from '../private-files.mjs';
 export async function browserSignIn(signIn, {signal, browserOptions = {}} = {}) {
   const root = await mkdtemp(join(tmpdir(),'magpie-doubaowork-'));
   let login, result;
+  const cancel=()=>{void login.cancel({shutdown:true}).catch(()=>{});};
   try {
     await securePrivate(root,{directory:true});
     login = new BrowserLogin({diagnosticFile:join(homedir(),'.cache','doubao-work','magpie-browser-startup.json'),
@@ -19,13 +20,16 @@ export async function browserSignIn(signIn, {signal, browserOptions = {}} = {}) 
       },
     });
     signal?.throwIfAborted();
+    signal?.addEventListener('abort',cancel,{once:true});
     await login.start();
+    signal?.throwIfAborted();
     while (login.status().active) await delay(100,undefined,{signal});
     const status = login.status();
     if (status.state !== 'success' || !result)
       return {type:'failed',error:status.message};
     return result;
   } finally {
+    signal?.removeEventListener('abort',cancel);
     await login?.dispose();
     if(login?.status().cleanupPending)
       console.error('[doubaowork.browser] '+JSON.stringify(login.status().diagnostic||{code:'DW_BROWSER_CLEANUP_PENDING'}));

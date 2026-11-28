@@ -1,10 +1,11 @@
 import {spawn} from 'node:child_process';
-import {access,mkdtemp,readFile,rename,rm} from 'node:fs/promises';
+import {access,mkdtemp,open,readFile,readdir,rename,rm} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {join,dirname} from 'node:path';
-import {homedir} from 'node:os';
+import {homedir,release} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {once} from 'node:events';
+import {setTimeout as delay} from 'node:timers/promises';
 import {request as httpRequest} from 'node:http';
 import {browserCandidates} from './platform.mjs';
 import {ensurePrivateDir,securePrivate,writePrivate} from './private-files.mjs';
@@ -14,6 +15,8 @@ const ACTIVE=new Set(['starting','waiting','awaiting_confirmation','importing'])
 const failure=(status,message)=>Object.assign(new Error(message),{status});
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const RETRY_REMOVE=new Set(['EBUSY','EPERM','ENOTEMPTY','EMFILE','ENFILE']);
+const STARTUP_LOG='browser-startup.log';
+const STARTUP_LOG_BYTES=8192;
 
 // Match Node's bounded removal retries in runtimes that ignore rm's retry options.
 export async function removeLoginDirectory(path,{remove=rm,wait=pause}={}){
@@ -50,8 +53,9 @@ export function doubaoCookies(input,now=Date.now()/1000){
   if(rows.length>200||Buffer.byteLength(JSON.stringify(rows))>65536)return [];
   return rows.some(c=>['sessionid','sessionid_ss'].includes(c.name)&&c.value.length>0)?rows:[];
 }
-export function browserArgs(profile){
+export function browserArgs(profile,platform=process.platform){
   return ['--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','--user-data-dir='+profile,
+    ...(platform==='win32'?['--enable-logging','--log-level=1','--log-file='+join(profile,STARTUP_LOG)]:[]),
     '--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',LOGIN_URL];
 }
 
@@ -100,7 +104,8 @@ export class DevToolsClient {
     this.socket=socket;this.timeoutMs=timeoutMs;this.maxBytes=maxBytes;
     this.pending=new Map();this.sequence=0;this.closed=false;
     socket.addEventListener('message',event=>this.receive(event.data));
-    socket.addEventListener('close',()=>this.close());socket.addEventListener('error',()=>this.close());
+    this.disconnected=new Promise(resolve=>socket.addEventListener('close',()=>{this.close();resolve(true);},{once:true}));
+    socket.addEventListener('error',()=>this.close());
   }
   receive(frame){
     if(this.closed)return;
@@ -128,36 +133,44 @@ export class DevToolsClient {
   }
 }
 
-function startupFailure(browser,phase,started,{error,code,signal,stderr='',cleanupPending=false}={}){
+function startupFailure(browser,phase,started,{error,code,signal,stderr='',browserLog='',evidence={}}={}){
   const errorCode=typeof error?.code==='string'?error.code:'';
+  const log=stderr+'\n'+browserLog;
   const causes={ENOENT:['DW_BROWSER_EXECUTABLE_MISSING','浏览器程序已移除，请重新选择有效的 Chrome / Edge 安装。'],
     EACCES:['DW_BROWSER_EXECUTABLE_DENIED','系统拒绝启动浏览器，请检查浏览器程序的执行权限。'],
     EPERM:['DW_BROWSER_EXECUTABLE_DENIED','系统拒绝启动浏览器，请检查浏览器程序的执行权限。']};
   let [reason,message]=(phase==='spawn'?causes[errorCode]:undefined)||
     [errorCode.startsWith('DW_BROWSER_')?errorCode:'DW_BROWSER_START_FAILED','浏览器登录窗口初始化失败。'];
-  if(/remote.?debugging.*(?:disallowed|disabled|not allowed|denied)/i.test(stderr))
+  if(/remote.?debugging.*(?:disallowed|disabled|not allowed|denied)/i.test(log))
     [reason,message]=['DW_BROWSER_POLICY','浏览器管理策略禁止登录通信，请联系设备管理员检查 RemoteDebuggingAllowed。'];
-  else if(/Missing X server|no DISPLAY|cannot open display|failed to connect to.*Wayland/i.test(stderr))
+  else if(/remote debugging requires a non-default data directory/i.test(log))
+    [reason,message]=['DW_BROWSER_PROFILE_OVERRIDE','浏览器未使用专用资料目录，请检查浏览器的 UserDataDir 管理策略和目录权限。'];
+  else if(/Missing X server|no DISPLAY|cannot open display|failed to connect to.*Wayland/i.test(log))
     [reason,message]=['DW_BROWSER_DISPLAY','浏览器无法连接图形桌面，请在可用的桌面会话中登录。'];
-  else if(/SUID sandbox.*not configured correctly|No usable sandbox|Running as root without --no-sandbox/i.test(stderr))
+  else if(/SUID sandbox.*not configured correctly|No usable sandbox|Running as root without --no-sandbox/i.test(log))
     [reason,message]=['DW_BROWSER_SANDBOX','浏览器沙箱组件安装或权限异常，请修复浏览器安装后重试。'];
-  else if(Number.isInteger(code)||signal)
+  else if(evidence.cleanLauncherExit&&reason==='DW_BROWSER_ENDPOINT_TIMEOUT')
+    message='浏览器启动进程已正常退出，专用资料目录未出现可用的登录端点。';
+  else if(!evidence.cleanLauncherExit&&(Number.isInteger(code)||signal))
     [reason,message]=['DW_BROWSER_EXITED','浏览器在登录通信建立前退出。'];
   else if(reason==='DW_BROWSER_ENDPOINT_TIMEOUT')message='浏览器已启动，等待登录通信端点超时。';
   else if(reason==='DW_BROWSER_ENDPOINT_INVALID')message='浏览器返回的登录通信端点格式有误。';
   else if(reason==='DW_BROWSER_CONNECT_TIMEOUT'||reason==='DW_BROWSER_PROTOCOL_TIMEOUT')message='浏览器已启动，登录通信握手超时。';
   else if(reason==='DW_BROWSER_DISCONNECTED')message='浏览器登录通信在初始化时断开。';
   else if(reason==='DW_BROWSER_CLOSE_TIMEOUT')message='登录浏览器关闭等待超时，临时资料目录已保留。';
+  else if(phase==='close')
+    [reason,message]=['DW_BROWSER_CLOSE_UNCONFIRMED','无法确认登录浏览器已关闭，临时资料目录已保留。'];
   else if(phase==='cleanup')
     [reason,message]=['DW_BROWSER_PROFILE_CLEANUP','登录浏览器临时资料目录清理失败，目录已保留。'];
   else if(phase==='endpoint'&&['EACCES','EPERM'].includes(errorCode))
     [reason,message]=['DW_BROWSER_PROFILE_ACCESS','无法读取登录浏览器的临时资料目录，请检查当前用户的目录权限。'];
-  const diagnostic={code:reason,phase,platform:process.platform,runtime:process.versions.bun?'Bun '+process.versions.bun:'Node '+process.versions.node,
+  const diagnostic={code:reason,phase,platform:process.platform,osRelease:release(),runtime:process.versions.bun?'Bun '+process.versions.bun:'Node '+process.versions.node,
     browser:browser?.id||'unknown',elapsedMs:Date.now()-started,...(Number.isInteger(code)?{exitCode:code}:{}),...(signal?{exitSignal:signal}:{}),
-    ...(/^[A-Z0-9_]{1,64}$/.test(errorCode)?{systemCode:errorCode}:{}),detail:String(error?.message||'').slice(0,2048),stderr};
+    ...(/^[A-Z0-9_]{1,64}$/.test(errorCode)?{systemCode:errorCode}:{}),...evidence,
+    detail:String(error?.message||'').slice(0,2048),stderr,...(browserLog?{browserLog}:{})};
   return Object.assign(failure(503,message+'（'+[reason,diagnostic.platform,diagnostic.runtime,'阶段='+phase,
     '耗时='+Math.round(diagnostic.elapsedMs/1000)+'秒',...(Number.isInteger(code)?['退出码='+code]:[])].join('，')+'）'),
-    {type:'browser_start_failed',diagnostic,cleanupPending});
+    {type:'browser_start_failed',diagnostic});
 }
 
 async function saveStartupDiagnostic(file,diagnostic,profile){
@@ -166,70 +179,144 @@ async function saveStartupDiagnostic(file,diagnostic,profile){
     if(profile)text=text.split(profile).join('<login-profile>');
     return text.split(homedir()).join('<home>').replace(/(?:https?|wss?):\/\/[^\s]+/g,'<browser-url>');
   };
-  const record={...diagnostic,at:new Date().toISOString(),stderr:redact(diagnostic.stderr),detail:redact(diagnostic.detail)};
+  const clean=({stderr,detail,browserLog,...fields})=>({...fields,stderr:redact(stderr),detail:redact(detail),
+    ...(browserLog?{browserLog:redact(browserLog)}:{})});
+  const {cleanup,...primary}=diagnostic;
+  const record={...clean(primary),at:new Date().toISOString(),...(cleanup?{cleanup:clean(cleanup)}:{})};
   await ensurePrivateDir(dirname(file));
   const temporary=file+'.'+randomUUID()+'.tmp';
   try{await writePrivate(temporary,JSON.stringify(record,null,2)+'\n');await rename(temporary,file);}
   catch(error){await rm(temporary,{force:true}).catch(()=>{});throw error;}
 }
 
+async function startupLog(profile){
+  let file;
+  try{
+    file=await open(join(profile,STARTUP_LOG),'r');
+    const {size}=await file.stat();
+    const bytes=Buffer.alloc(Math.min(size,STARTUP_LOG_BYTES));
+    const {bytesRead}=await file.read(bytes,0,bytes.length,Math.max(0,size-bytes.length));
+    return bytes.toString('utf8',0,bytesRead);
+  }catch{return '';}
+  finally{await file?.close().catch(()=>{});}
+}
+
+async function profileMarkers(profile){
+  const entries=await readdir(profile).catch(()=>[]);
+  return {portFile:entries.includes('DevToolsActivePort'),lockfile:entries.includes('lockfile'),localState:entries.includes('Local State')};
+}
+
+async function untilAbort(promise,signal){
+  let aborted;
+  const stopped=new Promise((_,reject)=>{
+    aborted=()=>reject(signal.reason);
+    signal.addEventListener('abort',aborted,{once:true});
+    if(signal.aborted)aborted();
+  });
+  try{return await Promise.race([promise,stopped]);}
+  finally{signal.removeEventListener('abort',aborted);}
+}
+
+async function waitWithin(promise,ms){
+  const timeout=new AbortController();
+  try{return await Promise.race([promise,delay(ms,false,{signal:timeout.signal})]);}
+  finally{timeout.abort();}
+}
+
 export async function launchIsolatedBrowser(browser,profile,{spawnProcess=spawn,connect=DevToolsClient.connect,
-  startupTimeoutMs=30000,signal}={}){
+  startupTimeoutMs=30000,signal,platform=process.platform}={}){
   signal?.throwIfAborted();
   const started=Date.now(),stopped=new AbortController();
-  let child,client,exited=false,exitCode,exitSignal,spawnError,stderr='',phase='spawn';
-  const captureStderr=chunk=>{stderr=(stderr+chunk.toString()).slice(-8192);};
+  const deadline=started+startupTimeoutMs;
+  let child,client,exited=false,exitCode,exitSignal,exitAfterMs,spawnError,stderr='',phase='spawn';
+  let cleanLauncherExit=false,closingBrowser=false,ready=false,endpointState='missing';
+  const captureStderr=chunk=>{stderr=(stderr+chunk.toString()).slice(-STARTUP_LOG_BYTES);};
   const requestSignal=signal?AbortSignal.any([signal,stopped.signal]):stopped.signal;
   let attachment=null,version;
   let resolveExit;
   const exit=new Promise(resolve=>{resolveExit=resolve;});
-  const onExit=(code,signal,error)=>{
-    exited=true;exitCode=code;exitSignal=signal;spawnError=error;
-    stopped.abort(Error('浏览器进程已退出。'));client?.close();resolveExit();
+  const onExit=(code,exitReason,error)=>{
+    if(exited)return;
+    exited=true;exitCode=code;exitSignal=exitReason;spawnError=error;exitAfterMs=Date.now()-started;
+    // Windows Chromium can replace the launch process before publishing its port.
+    cleanLauncherExit=platform==='win32'&&code===0&&!exitReason&&!error&&!closingBrowser;
+    if(!ready&&!cleanLauncherExit)stopped.abort(Error('浏览器进程已退出。'));
+    resolveExit(true);
   };
-  const abortStartup=()=>client?.close();
-  requestSignal.addEventListener('abort',abortStartup,{once:true});
-  async function dispose(){
-    if(!child)return;
-    const closing=Date.now();
-    if(!exited&&client&&!client.closed)await Promise.race([client.send('Browser.close').catch(()=>{}),pause(700)]);
-    if(!exited)await Promise.race([exit,pause(1200)]);
-    if(!exited){child.kill('SIGTERM');await Promise.race([exit,pause(1200)]);}
-    if(!exited){child.kill('SIGKILL');await Promise.race([exit,pause(1200)]);}
-    client?.close();
-    if(!exited)throw startupFailure(browser,'close',closing,{error:{code:'DW_BROWSER_CLOSE_TIMEOUT'},code:child.exitCode,signal:child.signalCode});
-  }
-  try{
-    child=spawnProcess(browser.path,browserArgs(profile),{stdio:['ignore','ignore','pipe'],shell:false,detached:false,windowsHide:false});
-    child.once('exit',(code,signal)=>onExit(code,signal));child.once('error',error=>onExit(null,null,error));
-    child.stderr?.on('data',captureStderr);
-    await Promise.race([once(child,'spawn',{signal:requestSignal}),exit.then(()=>{throw Error('浏览器启动失败。');})]);
-    phase='endpoint';
-    let endpoint,invalid=false;
-    while(!endpoint){
-      requestSignal.throwIfAborted();
+  async function waitForEndpoint(until,abort){
+    do{
+      abort?.throwIfAborted();
       try{
         const raw=await readFile(join(profile,'DevToolsActivePort'),'utf8');
         const [port,path]=raw.trim().split(/\r?\n/);
-        if(/^\d+$/.test(port)&&Number(port)>0&&Number(port)<=65535&&/^\/devtools\/browser\/[A-Za-z0-9-]+$/.test(path))
-          endpoint='ws://127.0.0.1:'+port+path;
-        else invalid=true;
-      }catch(error){if(!['ENOENT','EBUSY'].includes(error.code))throw error;}
-      if(endpoint)break;
-      if(Date.now()-started>=startupTimeoutMs)throw Object.assign(Error('Browser endpoint unavailable'),
-        {code:invalid?'DW_BROWSER_ENDPOINT_INVALID':'DW_BROWSER_ENDPOINT_TIMEOUT'});
-      await new Promise(resolve=>{const timer=setTimeout(done,50);function done(){clearTimeout(timer);requestSignal.removeEventListener('abort',done);resolve();}requestSignal.addEventListener('abort',done,{once:true});});
+        if(/^\d+$/.test(port)&&Number(port)>0&&Number(port)<=65535&&/^\/devtools\/browser\/[A-Za-z0-9-]+$/.test(path)){
+          endpointState='ready';return 'ws://127.0.0.1:'+port+path;
+        }
+        endpointState='incomplete';
+      }catch(error){
+        if(!['ENOENT','EBUSY'].includes(error.code))throw error;
+        endpointState=error.code==='EBUSY'?'busy':'missing';
+      }
+      const remaining=until-Date.now();
+      if(remaining<=0)return;
+      await delay(Math.min(50,remaining),undefined,{signal:abort});
+    }while(true);
+  }
+  function evidence(){
+    return {launcherPid:child?.pid,launcherExitAfterMs:exitAfterMs,cleanLauncherExit,endpointState};
+  }
+  async function dispose(){
+    if(!child)return;
+    const closing=Date.now();
+    if(!exited&&!client)await waitWithin(exit,1200);
+    if(cleanLauncherExit&&!client){
+      // Cancellation can arrive between the launcher exiting and the endpoint appearing.
+      const endpoint=await waitForEndpoint(Math.min(deadline,closing+1200)).catch(()=>undefined);
+      if(endpoint)client=await connect(endpoint,{timeoutMs:700}).catch(()=>undefined);
     }
+    closingBrowser=true;
+    let closeRequested=false;
+    if(client&&!client.closed){
+      closeRequested=true;
+      await waitWithin(client.send('Browser.close').catch(()=>false),700);
+    }
+    if(!exited&&client)await waitWithin(exit,1200);
+    if(!exited){child.kill('SIGTERM');await waitWithin(exit,1200);}
+    if(!exited){child.kill('SIGKILL');await waitWithin(exit,1200);}
+    const disconnected=!cleanLauncherExit||!client||await waitWithin(client.disconnected,1200);
+    client?.close();
+    const unconfirmed=cleanLauncherExit&&!closeRequested&&(!ready||!disconnected);
+    const markers=unconfirmed?await profileMarkers(profile):undefined;
+    const closeTimedOut=!exited||!disconnected;
+    if(closeTimedOut||(unconfirmed&&(Date.now()<deadline||Object.values(markers).some(Boolean)))){
+      const code=closeTimedOut?'DW_BROWSER_CLOSE_TIMEOUT':'DW_BROWSER_CLOSE_UNCONFIRMED';
+      throw startupFailure(browser,'close',closing,{error:{code},evidence:{...evidence(),...(markers?{profile:markers}:{})}});
+    }
+  }
+  try{
+    child=spawnProcess(browser.path,browserArgs(profile,platform),{stdio:['ignore','ignore','pipe'],shell:false,detached:false,windowsHide:false});
+    child.once('exit',(code,signal)=>onExit(code,signal));child.once('error',error=>onExit(null,null,error));
+    child.stderr?.on('data',captureStderr);
+    await once(child,'spawn',{signal:requestSignal});
+    phase='endpoint';
+    const endpoint=await waitForEndpoint(deadline,requestSignal);
+    if(!endpoint)throw Object.assign(Error('Browser endpoint unavailable'),
+      {code:endpointState==='incomplete'?'DW_BROWSER_ENDPOINT_INVALID':'DW_BROWSER_ENDPOINT_TIMEOUT'});
     phase='connect';
     client=await connect(endpoint,{signal:requestSignal});
     requestSignal.throwIfAborted();
     phase='protocol';
-    version=await client.send('Browser.getVersion');
+    version=await untilAbort(client.send('Browser.getVersion'),requestSignal);
+    ready=true;
   }catch(error){
-    const failure=startupFailure(browser,phase,started,{error:spawnError||error,code:exitCode,signal:exitSignal,stderr});
-    try{await dispose();}catch{failure.cleanupPending=true;}
-    signal?.throwIfAborted();throw failure;
-  }finally{requestSignal.removeEventListener('abort',abortStartup);}
+    const failureAt=Date.now(),state=evidence(),exitDetails={code:exitCode,signal:exitSignal,error:spawnError||error};
+    const [log,markers]=child&&!signal?.aborted?await Promise.all([startupLog(profile),profileMarkers(profile)]):['',undefined];
+    const failure=startupFailure(browser,phase,started,{...exitDetails,stderr,browserLog:log,
+      evidence:{...state,elapsedMs:failureAt-started,...(markers?{profile:markers}:{})}});
+    try{await dispose();}catch(cleanupError){failure.cleanupError=cleanupError;}
+    if(!failure.cleanupError)signal?.throwIfAborted();
+    throw failure;
+  }
   child.stderr?.removeListener('data',captureStderr);child.stderr?.resume();stderr='';
   return {
     metadata(){
@@ -264,8 +351,9 @@ export class BrowserLogin {
   status(){return {...this.state,active:ACTIVE.has(this.state.state)||this.current!==null};}
   async options(){return (await this.discover()).map(({id,name})=>({id,name}));}
   update(session,state,message,extra={}){if(this.current===session)this.state={...this.state,state,message,...extra};}
-  async diagnose(session,error){
-    const diagnostic={...error.diagnostic};let message=error.message;
+  async diagnose(session,error,cleanupError){
+    const diagnostic={...error.diagnostic,...(cleanupError?{cleanup:cleanupError.diagnostic}:{})};
+    let message=cleanupError?error.message+' '+cleanupError.message:error.message;
     try{
       await saveStartupDiagnostic(this.diagnosticFile,diagnostic,session.profile);
       diagnostic.file=this.diagnosticFile;message+=' 启动诊断已保存到 '+this.diagnosticFile;
@@ -274,7 +362,9 @@ export class BrowserLogin {
       diagnostic.fileError=typeof error.code==='string'?error.code:'private_file_error';
       message+=' 诊断文件未能保存（'+diagnostic.fileError+'）。';
     }
-    delete diagnostic.stderr;delete diagnostic.detail;
+    for(const stage of [diagnostic,diagnostic.cleanup].filter(Boolean)){
+      delete stage.stderr;delete stage.detail;delete stage.browserLog;
+    }
     return {message,diagnostic};
   }
   async start(browserId,context={}){
@@ -306,13 +396,12 @@ export class BrowserLogin {
       this.update(session,'waiting','请在新打开的 '+browser.name+' 窗口登录豆包。完成后会自动接入，无需复制 Cookie。');
       this.schedule(session);
     }catch(error){
+      session.closeError=error.cleanupError;
       if(!session.cancelled){
         const failure=error.diagnostic?error:startupFailure(browser,phase,started,{error});
         if(!browser)failure.diagnostic.code='DW_BROWSER_NOT_FOUND';
-        session.cleanupPending=failure.cleanupPending===true;
         if(error.status&&!error.diagnostic)failure.message=error.message+'（'+failure.diagnostic.code+'，'+failure.diagnostic.runtime+'）';
-        const result=await this.diagnose(session,failure);
-        if(!session.cancelled)this.update(session,'error',result.message,{diagnostic:result.diagnostic});
+        session.startupError=failure;
       }
       await this.finish(session);
     }finally{
@@ -355,17 +444,25 @@ export class BrowserLogin {
     if(session.finishing)return session.finishing;
     clearTimeout(session.timer);session.stable='';
     session.finishing=(async()=>{
-      let closed=!session.cleanupPending,closeError;
-      if(session.handle)try{await session.handle.dispose();}catch(error){closed=false;closeError=error;}
-      if(session.profile&&closed){
+      let cleanupError=session.closeError;
+      const browser={id:session.browserId};
+      const closing=Date.now();
+      if(session.handle)try{await session.handle.dispose();}catch(error){
+        cleanupError=error.diagnostic?error:startupFailure(browser,'close',closing,{error});
+      }
+      if(cleanupError&&!cleanupError.diagnostic)cleanupError=startupFailure(browser,'close',closing,{error:cleanupError});
+      if(session.profile&&!cleanupError){
         const started=Date.now();
         try{await removeLoginDirectory(session.profile);}
-        catch(error){closed=false;closeError=startupFailure({id:session.browserId},'cleanup',started,{error});}
+        catch(error){cleanupError=startupFailure(browser,'cleanup',started,{error});}
       }
-      if(!closed&&this.current===session){
-        const result=closeError?.diagnostic?await this.diagnose(session,closeError):null;
-        this.state={...this.state,message:this.state.message+' '+(result?.message||'临时会话清理未完成，请关闭专用窗口后检查。'),
-          cleanupPending:true,...(result?{diagnostic:result.diagnostic}:{})};
+      const startupError=session.startupError;
+      if(startupError||cleanupError){
+        const result=await this.diagnose(session,startupError||cleanupError,startupError?cleanupError:undefined);
+        if(startupError&&!session.cancelled)this.update(session,'error',result.message,{diagnostic:result.diagnostic,
+          ...(cleanupError?{cleanupPending:true}:{})});
+        else if(cleanupError)this.update(session,this.state.state,this.state.message+' '+result.message,
+          {cleanupPending:true,diagnostic:result.diagnostic});
       }
       if(this.current===session)this.current=null;
     })();

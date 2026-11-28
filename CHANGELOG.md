@@ -1,5 +1,11 @@
 # 更新记录 / Changelog
 
+## 0.6.5 · Windows 浏览器进程接手
+
+- 启动进程以 0 退出后，继续等待专用资料目录的登录端点，使用接手的 Chrome 或 Edge 完成初始化和关闭。
+- 启动期间响应 Magpie 取消。启动、关闭和清理错误按发生顺序保存在同一份诊断中。
+- Wait for the dedicated Windows browser endpoint across a launcher handoff. Preserve startup and cleanup errors in the same diagnostic.
+
 ## 0.5.0 · 2026-11-13
 
 - 将 Magpie 供应商插件发布到独立仓库 `magpie-doubao-work`。

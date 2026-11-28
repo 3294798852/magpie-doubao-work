@@ -6,6 +6,7 @@ import {mkdtemp,writeFile,readFile,readdir,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir,homedir} from 'node:os';
 import {BrowserLogin,launchIsolatedBrowser,removeLoginDirectory} from '../browser-login.mjs';
+import {browserSignIn} from '../magpie/login.mjs';
 import {assertPrivate} from '../private-files.mjs';
 
 const browser={id:'chrome',name:'Fixture Chrome',path:'/fixture/chrome'};
@@ -93,6 +94,59 @@ test('启动期间取消立即释放等待，取消原因保持原样',async t=>
   await assert.rejects(launchIsolatedBrowser(browser,root,{spawnProcess:fixture.spawnProcess,signal:abort.signal}),
     error=>error===abort.signal.reason);
   assert.equal(fixture.child.kills,1);
+});
+
+test('Windows 启动进程正常退出后等待端点，记录启动失败及关闭未确认',async t=>{
+  const root=await temporary(t),file=join(root,'browser-startup-error.json');
+  const fixture=processFixture(child=>{child.exitCode=0;child.emit('exit',0,null);});
+  const login=new BrowserLogin({tmpRoot:root,discover:async()=>[browser],
+    async launch(selected,profile,options){
+      await writeFile(join(profile,'lockfile'),'fixture');
+      await writeFile(join(profile,'browser-startup.log'),profile+' https://www.doubao.com/chat/?private=fixture');
+      return launchIsolatedBrowser(selected,profile,{...options,spawnProcess:fixture.spawnProcess,platform:'win32',
+        startupTimeoutMs:80,connect:async()=>assert.fail('No endpoint was written.')});
+    }});
+  await login.start();
+  const status=login.status(),record=JSON.parse(await readFile(file,'utf8'));
+  assert.equal(status.state,'error');assert.equal(status.cleanupPending,true);
+  assert.equal(record.code,'DW_BROWSER_ENDPOINT_TIMEOUT');assert.equal(record.phase,'endpoint');
+  assert.equal(record.exitCode,0);assert.equal(record.cleanLauncherExit,true);
+  assert.equal(record.endpointState,'missing');assert.equal(record.profile.lockfile,true);
+  assert(record.elapsedMs>=80);assert(record.elapsedMs>record.launcherExitAfterMs);
+  assert.equal(record.cleanup.code,'DW_BROWSER_CLOSE_UNCONFIRMED');assert.equal(status.diagnostic.code,record.code);
+  assert(record.browserLog.includes('<login-profile>'));assert(!JSON.stringify(record).includes('private=fixture'));
+  assert.equal(status.diagnostic.browserLog,undefined);
+  assert.equal(fixture.child.kills,0);
+});
+
+test('Magpie 在 Windows 浏览器接手期间可取消，关闭延迟出现的专用端点',async t=>{
+  const root=await temporary(t),abort=new AbortController();
+  const commands=[];
+  let completeEndpoint,profile,resolveDisconnect;
+  const disconnected=new Promise(resolve=>{resolveDisconnect=resolve;});
+  const fixture=processFixture(child=>{
+    child.exitCode=0;child.emit('exit',0,null);
+    setTimeout(()=>abort.abort(),15);
+    completeEndpoint=new Promise((resolve,reject)=>setTimeout(()=>
+      writeFile(join(profile,'DevToolsActivePort'),'12345\n/devtools/browser/fixture-token\n').then(resolve,reject),75));
+  });
+  await assert.rejects(browserSignIn(()=>assert.fail('A cancelled login must not save an account.'),{signal:abort.signal,
+    browserOptions:{diagnosticFile:join(root,'browser-startup-error.json'),discover:async()=>[browser],
+      launch(selected,path,options){
+        profile=path;
+        return launchIsolatedBrowser(selected,path,{...options,spawnProcess:fixture.spawnProcess,platform:'win32',
+          startupTimeoutMs:1500,async connect(url){
+            assert.equal(url,'ws://127.0.0.1:12345/devtools/browser/fixture-token');
+            return {disconnected,closed:false,close(){this.closed=true;},async send(method){
+              commands.push(method);resolveDisconnect(true);
+            }};
+          }});
+      }}}),error=>error===abort.signal.reason);
+  await completeEndpoint;
+  assert.deepEqual(commands,['Browser.close']);
+  assert.equal(fixture.child.kills,0);
+  await assert.rejects(readdir(profile),error=>error.code==='ENOENT');
+  assert.deepEqual(await readdir(root),[]);
 });
 
 test('失败诊断私有保存并覆盖上一份，临时资料目录被清理',async t=>{
